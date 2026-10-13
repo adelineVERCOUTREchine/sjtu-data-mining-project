@@ -26,7 +26,7 @@ from hashlib import sha1
 numHashes = 10
 
 # Read data
-numDocs = 1000
+numDocs = 4985
 dataFile = "../archive/anime_synopsis.train"
 
 # =============================================================================
