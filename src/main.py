@@ -27,32 +27,7 @@ numHashes = 10
 
 # Read data
 numDocs = 1000
-dataFile = "../archive/anime_synopsis.csv"
-truthFile = "../archive/articles_1000.truth"
-
-# =============================================================================
-#                  Parse The Ground Truth Tables
-# =============================================================================
-# Build a dictionary mapping the document IDs to their plagiaries, and vice-
-# versa.
-plagiaries = {}
-
-# Open the truth file. Text mode already enables universal-newline handling in
-# Python 3; the legacy "U" mode is invalid in recent Python versions.
-f = open(truthFile, "r")
-
-# For each line of the files...
-for line in f:
-
-    # Strip the newline character, if present.
-    if line[-1] == "\n":
-        line = line[0:-1]
-
-    docs = line.split(" ")
-
-    # Map the two documents to each other.
-    plagiaries[docs[0]] = docs[1]
-    plagiaries[docs[1]] = docs[0]
+dataFile = "../archive/anime_synopsis.train"
 
 # =============================================================================
 #               Convert Documents To Sets of Shingles
@@ -65,7 +40,7 @@ print("Shingling articles...")
 docsAsShingleSets = {}
 
 # Open the data file.
-f = open(dataFile, "r")
+f = open(dataFile, "r", encoding="utf-8")
 
 docNames = []
 
@@ -279,14 +254,14 @@ print("\nComparing MinHash signatures took %.2fsec" % elapsed)
 tp = 0
 fp = 0
 
-threshold = 0.5
+threshold = 0.1
 print("\nList of Document Pairs with J(d1,d2) more than", threshold)
 print("Values shown are the estimated Jaccard similarity and the actual")
 print("Jaccard similarity.\n")
 print("                   Est. J   Act. J")
 
 # For each of the document pairs...
-f = open("../data/prediction.csv", "w")
+f = open("../data/prediction.csv", "w", encoding="utf-8")
 f.write("article1,article2,Est. J,Act. J\n")
 for i in range(0, numDocs):
     for j in range(i + 1, numDocs):
@@ -311,18 +286,4 @@ for i in range(0, numDocs):
             print("  %5s --> %5s   %.2f     %.2f" % (docNames[i], docNames[j], estJ, J))
             f.write("{},{},{},{}\n".format(docNames[i], docNames[j], estJ, J))
 
-            # Check whether this is a true positive or false positive.
-            # We don't need to worry about counting the same true positive twice
-            # because we implemented the for-loops to only compare each pair once.
-
-            if docNames[i] in plagiaries and plagiaries[docNames[i]] == docNames[j]:
-                tp = tp + 1
-            else:
-                fp = fp + 1
-
-
 f.close()
-# Display true positive and false positive counts.
-print()
-print("True positives:  " + str(tp) + " / " + str(int(len(plagiaries.keys()) / 2)))
-print("False positives: " + str(fp))
