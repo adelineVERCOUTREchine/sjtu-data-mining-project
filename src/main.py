@@ -250,10 +250,6 @@ print("\nComparing MinHash signatures took %.2fsec" % elapsed)
 #                   Display Similar Document Pairs
 # =============================================================================
 
-# Count the true positives and false positives.
-tp = 0
-fp = 0
-
 threshold = 0.1
 print("\nList of Document Pairs with J(d1,d2) more than", threshold)
 print("Values shown are the estimated Jaccard similarity and the actual")
