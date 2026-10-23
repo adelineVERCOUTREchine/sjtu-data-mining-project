@@ -8,7 +8,9 @@ from pathlib import Path
 def nettoyer_synopsis(texte):
     # Retirer les crédits avant de remplacer leurs délimiteurs.
     texte = re.sub(
-        r"\[\s*(?:Written\s+by\b|Source\s*:)[^\]]*\]",
+        r"\[\s*(?:Writ{2,3}en\s+by\b|Source\s*:)[^\]]*\]"
+        r"|\(\s*(?:Writ{2,3}en\s+by\b|Source\s*:)"
+        r"(?:[^()]|\([^()]*\))*\)",
         " ",
         texte,
         flags=re.IGNORECASE,
