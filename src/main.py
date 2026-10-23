@@ -26,8 +26,9 @@ from hashlib import sha1
 numHashes = 10
 
 # Read data
-numDocs = 4985
 dataFile = "../archive/anime_synopsis.train"
+with open(dataFile, "r", encoding="utf-8") as dataset:
+    numDocs = sum(1 for _ in dataset)
 
 # =============================================================================
 #               Convert Documents To Sets of Shingles

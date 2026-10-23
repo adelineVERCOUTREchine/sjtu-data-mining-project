@@ -11,6 +11,9 @@ with source.open("r", encoding="utf-8-sig", newline="") as entree, \
     ecrivain.writeheader()
 
     for ligne in lecteur:
+        # Écarter les synopsis vides ou contenant moins de trois mots.
+        if len(ligne["description"].split()) < 3:
+            continue
         ecrivain.writerow({
             "mal_id": ligne["mal_id"],
             "synopsis": ligne["description"],
@@ -44,6 +47,9 @@ with source.open("r", encoding="utf-8-sig", newline="") as entree, \
 
         # Garder chaque synopsis sur une seule ligne.
         synopsis = " ".join(synopsis.split())
+
+        if len(synopsis.split()) < 3:
+            continue
 
         sortie.write(f'{ligne["mal_id"]} {synopsis}\n')
 
