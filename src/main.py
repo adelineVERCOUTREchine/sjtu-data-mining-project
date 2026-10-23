@@ -19,6 +19,7 @@ import sys
 import random
 import time
 from hashlib import sha1
+from pathlib import Path
 
 # This is the number of components in the resulting MinHash signatures.
 # Correspondingly, it is also the number of random hash functions that
@@ -26,7 +27,8 @@ from hashlib import sha1
 numHashes = 10
 
 # Read data
-dataFile = "../archive/anime_synopsis.train"
+project_dir = Path(__file__).resolve().parent.parent
+dataFile = project_dir / "archive" / "anime_synopsis.train"
 with open(dataFile, "r", encoding="utf-8") as dataset:
     numDocs = sum(1 for _ in dataset)
 
@@ -258,7 +260,9 @@ print("Jaccard similarity.\n")
 print("                   Est. J   Act. J")
 
 # For each of the document pairs...
-f = open("../data/prediction.csv", "w", encoding="utf-8")
+outputFile = project_dir / "data" / "prediction.csv"
+outputFile.parent.mkdir(parents=True, exist_ok=True)
+f = open(outputFile, "w", encoding="utf-8")
 f.write("article1,article2,Est. J,Act. J\n")
 for i in range(0, numDocs):
     for j in range(i + 1, numDocs):
