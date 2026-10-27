@@ -15,16 +15,16 @@
 #
 
 
-import sys
-import random
 import time
 from hashlib import sha1
 from pathlib import Path
 
+from minhash_common import NEXT_PRIME, NUM_HASHES, creer_fonctions_hachage
+
 # This is the number of components in the resulting MinHash signatures.
 # Correspondingly, it is also the number of random hash functions that
 # we will need in order to calculate the MinHash.
-numHashes = 10
+numHashes = NUM_HASHES
 
 # Read data
 project_dir = Path(__file__).resolve().parent.parent
@@ -132,38 +132,15 @@ maxShingleID = 2**32 - 1
 
 # We need the next largest prime number above 'maxShingleID'.
 # http://compoasso.free.fr/primelistweb/page/prime/liste_online_en.php
-nextPrime = 4294967311
+nextPrime = NEXT_PRIME
 
 
 # Our random hash function will take the form of:
 #   h(x) = (a*x + b) % c
 # Where 'x' is the input value, 'a' and 'b' are random coefficients, and 'c' is
 # a prime number just greater than maxShingleID, i.e. nextPrime
-# For convenience, I have randomly picked them and fix them for you.
-a_list = [
-    2647644122,
-    3144724950,
-    1813742201,
-    3889397089,
-    850218610,
-    4228854938,
-    3422847010,
-    1974054350,
-    1398857723,
-    3861451095,
-]
-b_list = [
-    2834859619,
-    3834190079,
-    3272971987,
-    1421011856,
-    1598897977,
-    1288507477,
-    1224561085,
-    3278591730,
-    1664131571,
-    3749293552,
-]
+# Use exactly the same coefficients and seed as the genres/tags pipeline.
+a_list, b_list = zip(*creer_fonctions_hachage(numHashes))
 # So the i-th hash function is
 # h(x) = (a_list[i] * x + b_list[i]) % nextPrime
 

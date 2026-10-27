@@ -24,6 +24,58 @@ def nettoyer_synopsis(texte):
     return " ".join(texte.split())
 
 
+def creer_train_complet():
+    """Créer un train sans en-tête : id, genres, tags, synopsis (tabulations)."""
+    archive = Path(__file__).resolve().parent
+    source = archive / "anime_dataset.csv"
+    destination = archive / "anime_genres_tags_synopsis.train"
+    conservees = 0
+    supprimees = 0
+
+    with source.open("r", encoding="utf-8-sig", newline="") as entree, \
+         destination.open("w", encoding="utf-8", newline="") as sortie:
+        lecteur = csv.DictReader(entree)
+        ecrivain = csv.writer(sortie, delimiter="\t", lineterminator="\n")
+
+        for ligne in lecteur:
+            description = ligne["description"]
+            synopsis = nettoyer_synopsis(description)
+            if len(description.split()) < 3 or len(synopsis.split()) < 3:
+                supprimees += 1
+                continue
+
+            ecrivain.writerow([
+                ligne["mal_id"], ligne["genres"], ligne["tags"], synopsis,
+            ])
+            conservees += 1
+
+    print(f"Fichier créé : {destination}")
+    print(f"Bilan : {conservees} entrées conservées, {supprimees} supprimées.")
+
+
+def creer_train_genres_tags():
+    """Exporter les métadonnées sans dépendre de la longueur du synopsis."""
+    archive = Path(__file__).resolve().parent
+    destination = archive / "anime_genres_tags.train"
+    conservees = 0
+    supprimees = 0
+
+    with (archive / "anime_dataset.csv").open(
+        "r", encoding="utf-8-sig", newline=""
+    ) as entree, destination.open("w", encoding="utf-8", newline="") as sortie:
+        ecrivain = csv.writer(sortie, delimiter="\t", lineterminator="\n")
+        for ligne in csv.DictReader(entree):
+            if not any(label.strip() for champ in ("genres", "tags")
+                       for label in ligne[champ].split("|")):
+                supprimees += 1
+                continue
+            ecrivain.writerow([ligne["mal_id"], ligne["genres"], ligne["tags"]])
+            conservees += 1
+
+    print(f"Fichier créé : {destination}")
+    print(f"Bilan : {conservees} entrées conservées, {supprimees} sans genres ni tags.")
+
+
 def main():
     archive = Path(__file__).resolve().parent
     source = archive / "anime_dataset.csv"
@@ -60,3 +112,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+    creer_train_complet()
+    creer_train_genres_tags()
