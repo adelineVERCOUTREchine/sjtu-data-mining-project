@@ -1,0 +1,30 @@
+# Installation : python -m pip install -r requirements.txt
+# Python 3.12 (testé sous Windows 11).
+
+# --- Données ---
+numpy>=2.0
+pandas>=2.2
+pyarrow>=17.0          # lecture/écriture Parquet (bien plus rapide que CSV pour les listes MAL)
+duckdb>=1.1            # requêtes SQL sur les gros CSV (~2 Go) sans tout charger en mémoire
+scipy>=1.14            # matrices creuses utilisateurs x animes
+tqdm>=4.66
+
+# --- Récupération des données ---
+kagglehub>=0.3         # téléchargement des datasets Kaggle (listes MAL)
+kaggle>=1.7            # exécution des méthodes sur Kaggle (scripts/kaggle_run.py)
+requests>=2.32         # API MyAnimeList v2, AniList GraphQL, Jikan
+python-dotenv>=1.0     # lecture de MAL_CLIENT_ID depuis .env
+
+# --- Modèles de recommandation ---
+scikit-learn>=1.5      # TF-IDF, cosinus, KNN, métriques
+implicit>=0.7.2        # ALS implicite, BPR
+lightgbm>=4.5          # re-ranking LambdaMART
+sentence-transformers>=3.0   # embeddings de synopsis (installe aussi transformers)
+torch>=2.4             # requis par sentence-transformers et pour le Transformer sur ensembles
+                       # Version GPU (CUDA) : voir le README, section "Environnement"
+networkx>=3.3          # graphe d'animes, PageRank, communautés (Louvain)
+
+# --- Visualisation et démo ---
+matplotlib>=3.9
+umap-learn>=0.5        # carte 2D des animes
+streamlit>=1.39        # interface de démonstration

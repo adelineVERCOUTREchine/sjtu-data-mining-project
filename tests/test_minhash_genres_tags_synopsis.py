@@ -5,16 +5,15 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from minhash_common import creer_fonctions_hachage
-from minhash_genres_tags import calculer_signatures as signatures_reference
-from minhash_genres_tags_synopsis import (
+from common.minhash import creer_fonctions_hachage
+from main import main
+from methods.minhash_genres_tags import calculer_signatures as signatures_reference
+from methods.minhash_genres_tags_synopsis import (
     calculer_signatures,
     charger_documents,
     creer_shingles,
-    main,
 )
 
 
@@ -61,10 +60,9 @@ class MinHashCombineTests(unittest.TestCase):
                 "2\tComedy\tSchool\tone two three four\n"
                 "3\tDrama\tMilitary\tfive six seven eight\n", encoding="utf-8",
             )
-            with patch.object(sys, "argv", ["minhash_genres_tags_synopsis.py", "--input", str(source),
-                                           "--output", str(sortie), "--threshold", "0"]), \
-                 contextlib.redirect_stdout(io.StringIO()):
-                main()
+            with contextlib.redirect_stdout(io.StringIO()):
+                main(["minhash_genres_tags_synopsis", "--input", str(source),
+                      "--output", str(sortie), "--threshold", "0"])
             with sortie.open(encoding="utf-8", newline="") as fichier:
                 lignes = list(csv.DictReader(fichier))
             self.assertEqual(len(lignes), 1)

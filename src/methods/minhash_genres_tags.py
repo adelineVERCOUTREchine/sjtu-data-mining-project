@@ -1,27 +1,22 @@
-"""Comparer les ensembles de genres et tags avec MinHash et Jaccard exact."""
+"""MinHash sur les genres et tags : paires d'animes au Jaccard estimé élevé."""
 
-import argparse
 import csv
 import time
-import unicodedata
-from hashlib import sha1
-from pathlib import Path
 
-from minhash_common import HASH_SEED, NEXT_PRIME, NUM_HASHES, creer_fonctions_hachage
+import config
+from common.minhash import (
+    ajouter_arguments_minhash,
+    creer_fonctions_hachage,
+    creer_labels,
+    exporter_similarites,
+    signatures_vocabulaire_reduit,
+    verifier_arguments_minhash,
+)
 
-
-PROJECT_DIR = Path(__file__).resolve().parent.parent
+DESCRIPTION = "MinHash + Jaccard sur les genres et tags (labels complets, k = 1)"
 SHINGLE_SIZE = 1  # Un label entier, même s'il contient plusieurs mots.
 
-
-def creer_labels(genres, tags):
-    labels = set()
-    for prefixe, champ in (("genre", genres), ("tag", tags)):
-        for valeur in champ.split("|"):
-            label = " ".join(unicodedata.normalize("NFKC", valeur).casefold().split())
-            if label:
-                labels.add(f"{prefixe}:{label}")
-    return frozenset(labels)
+calculer_signatures = signatures_vocabulaire_reduit
 
 
 def charger_documents(source):
@@ -42,63 +37,17 @@ def charger_documents(source):
     return documents, ignores
 
 
-def calculer_signatures(documents, fonctions):
-    # Chaque label est haché une seule fois pour tout le corpus.
-    valeurs = {}
-    for labels in documents.values():
-        for label in labels:
-            if label not in valeurs:
-                identifiant = int.from_bytes(sha1(label.encode("utf-8")).digest()[:4], "big")
-                valeurs[label] = tuple((a * identifiant + b) % NEXT_PRIME for a, b in fonctions)
-
-    cache = {}
-    signatures = []
-    for labels in documents.values():
-        if not labels:
-            raise ValueError("Un ensemble vide ne doit pas recevoir de signature MinHash.")
-        if labels not in cache:
-            cache[labels] = tuple(min(composantes) for composantes in zip(
-                *(valeurs[label] for label in labels)
-            ))
-        signatures.append(cache[labels])
-    return signatures
+def ajouter_arguments(parser):
+    ajouter_arguments_minhash(
+        parser,
+        entree=config.GENRES_TAGS_TRAIN,
+        sortie=config.RESULTS_DIR / "minhash" / "prediction_genres_tags.csv",
+        seuil=0.5,
+    )
 
 
-def exporter_similarites(documents, signatures, destination, seuil=0.5):
-    if not 0 <= seuil <= 1:
-        raise ValueError("Le seuil doit être compris entre 0 et 1.")
-    identifiants = list(documents)
-    ensembles = list(documents.values())
-    nombre_hashes = len(signatures[0]) if signatures else NUM_HASHES
-    paires = 0
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    with destination.open("w", encoding="utf-8", newline="") as sortie:
-        ecrivain = csv.writer(sortie)
-        ecrivain.writerow(["article1", "article2", "Est. J", "Act. J"])
-        for i, signature in enumerate(signatures):
-            for j in range(i + 1, len(signatures)):
-                estimation = sum(a == b for a, b in zip(signature, signatures[j])) / nombre_hashes
-                if estimation > seuil:
-                    intersection = len(ensembles[i] & ensembles[j])
-                    exact = intersection / (len(ensembles[i]) + len(ensembles[j]) - intersection)
-                    ecrivain.writerow([identifiants[i], identifiants[j], estimation, exact])
-                    paires += 1
-            if (i + 1) % 500 == 0:
-                print(f"Comparaison : {i + 1}/{len(signatures)} animes traités.", flush=True)
-    return paires
-
-
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", type=Path, default=PROJECT_DIR / "archive" / "anime_genres_tags.train")
-    parser.add_argument("--output", type=Path, default=PROJECT_DIR / "data" / "prediction_genres_tags.csv")
-    parser.add_argument("--num-hashes", type=int, default=NUM_HASHES)
-    parser.add_argument("--seed", type=int, default=HASH_SEED)
-    parser.add_argument("--threshold", type=float, default=0.5)
-    args = parser.parse_args()
-    if args.num_hashes < 1 or not 0 <= args.threshold <= 1:
-        parser.error("--num-hashes doit être positif et --threshold compris entre 0 et 1.")
-
+def executer(args):
+    verifier_arguments_minhash(args)
     debut = time.perf_counter()
     documents, ignores = charger_documents(args.input)
     print(f"{len(documents)} animes, {ignores} ensembles vides ignorés.")
@@ -109,7 +58,3 @@ def main():
     paires = exporter_similarites(documents, signatures, args.output, args.threshold)
     print(f"{paires} paires avec Jaccard estimé > {args.threshold} : {args.output}")
     print(f"Durée : {time.perf_counter() - debut:.2f} s.")
-
-
-if __name__ == "__main__":
-    main()

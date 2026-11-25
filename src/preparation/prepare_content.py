@@ -1,12 +1,17 @@
-﻿import csv
+"""Nettoyer le catalogue et générer les fichiers .train des méthodes MinHash."""
+
+import csv
 import re
 import string
 import unicodedata
-from pathlib import Path
+
+import config
+
+DESCRIPTION = "Nettoyer les synopsis et générer les fichiers .train (data/content/)"
 
 
-def nettoyer_synopsis(texte):
-    # Retirer les crédits avant de remplacer leurs délimiteurs.
+def retirer_credits(texte):
+    """Supprimer les mentions « [Written by MAL Rewrite] », « (Source: ...) », etc."""
     texte = re.sub(
         r"\[\s*(?:Writ{2,3}en\s+by\b|Source\s*:)[^\]]*\]"
         r"|\(\s*(?:Writ{2,3}en\s+by\b|Source\s*:)"
@@ -15,6 +20,12 @@ def nettoyer_synopsis(texte):
         texte,
         flags=re.IGNORECASE,
     )
+    return " ".join(texte.split())
+
+
+def nettoyer_synopsis(texte):
+    # Retirer les crédits avant de remplacer leurs délimiteurs.
+    texte = retirer_credits(texte)
     texte = texte.lower()
     texte = "".join(
         " " if caractere in string.punctuation
@@ -26,7 +37,7 @@ def nettoyer_synopsis(texte):
 
 def creer_train_complet():
     """Créer un train sans en-tête : id, genres, tags, synopsis (tabulations)."""
-    archive = Path(__file__).resolve().parent
+    archive = config.CONTENT_DIR
     source = archive / "anime_dataset.csv"
     destination = archive / "anime_genres_tags_synopsis.train"
     conservees = 0
@@ -55,7 +66,7 @@ def creer_train_complet():
 
 def creer_train_genres_tags():
     """Exporter les métadonnées sans dépendre de la longueur du synopsis."""
-    archive = Path(__file__).resolve().parent
+    archive = config.CONTENT_DIR
     destination = archive / "anime_genres_tags.train"
     conservees = 0
     supprimees = 0
@@ -76,8 +87,8 @@ def creer_train_genres_tags():
     print(f"Bilan : {conservees} entrées conservées, {supprimees} sans genres ni tags.")
 
 
-def main():
-    archive = Path(__file__).resolve().parent
+def creer_train_synopsis():
+    archive = config.CONTENT_DIR
     source = archive / "anime_dataset.csv"
     destination_csv = archive / "anime_synopsis.csv"
     destination_train = archive / "anime_synopsis.train"
@@ -110,7 +121,11 @@ def main():
           "(synopsis de moins de 3 mots avant ou après nettoyage).")
 
 
-if __name__ == "__main__":
-    main()
+def ajouter_arguments(parser):
+    pass
+
+
+def executer(args):
+    creer_train_synopsis()
     creer_train_complet()
     creer_train_genres_tags()

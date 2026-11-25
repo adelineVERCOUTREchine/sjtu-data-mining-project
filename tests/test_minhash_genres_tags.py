@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from minhash_genres_tags import (
+from methods.minhash_genres_tags import (
     calculer_signatures,
     charger_documents,
     creer_fonctions_hachage,

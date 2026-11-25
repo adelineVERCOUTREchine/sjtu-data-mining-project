@@ -1,27 +1,29 @@
-"""Comparer ensemble genres, tags et synopsis avec MinHash et Jaccard exact."""
+"""MinHash sur l'union des genres, tags et shingles de synopsis."""
 
-import argparse
 import csv
 import time
-from hashlib import sha1
-from pathlib import Path
 
-from minhash_common import HASH_SEED, NEXT_PRIME, NUM_HASHES, creer_fonctions_hachage
-from minhash_genres_tags import creer_labels, exporter_similarites
+import config
+from common.minhash import (
+    ajouter_arguments_minhash,
+    creer_fonctions_hachage,
+    creer_labels,
+    creer_shingles_mots,
+    exporter_similarites,
+    signatures_par_document,
+    verifier_arguments_minhash,
+)
 
-
-PROJECT_DIR = Path(__file__).resolve().parent.parent
+DESCRIPTION = "MinHash + Jaccard sur genres/tags (k = 1) et synopsis (k = 3) combinés"
 SYNOPSIS_SHINGLE_SIZE = 3
+
+calculer_signatures = signatures_par_document
 
 
 def creer_shingles(genres, tags, synopsis):
-    # Le train contient déjà les synopsis nettoyés par dataset_modifier.py.
-    mots = synopsis.split()
-    texte = {
-        "synopsis:" + " ".join(mots[i:i + SYNOPSIS_SHINGLE_SIZE])
-        for i in range(len(mots) - SYNOPSIS_SHINGLE_SIZE + 1)
-    }
-    return creer_labels(genres, tags) | frozenset(texte)
+    # Le train contient déjà les synopsis nettoyés par prepare_content.
+    texte = creer_shingles_mots(synopsis, SYNOPSIS_SHINGLE_SIZE, prefixe="synopsis:")
+    return creer_labels(genres, tags) | texte
 
 
 def charger_documents(source):
@@ -46,37 +48,17 @@ def charger_documents(source):
     return documents, ignores
 
 
-def calculer_signatures(documents, fonctions):
-    signatures = []
-    for shingles in documents.values():
-        if not shingles:
-            raise ValueError("Un ensemble vide ne doit pas recevoir de signature MinHash.")
-        # Traiter un anime à la fois : ne pas stocker 128 valeurs par shingle
-        # pour tout le vocabulaire des synopsis.
-        identifiants = {
-            int.from_bytes(sha1(shingle.encode("utf-8")).digest()[:4], "big")
-            for shingle in shingles
-        }
-        signatures.append(tuple(
-            min((a * identifiant + b) % NEXT_PRIME for identifiant in identifiants)
-            for a, b in fonctions
-        ))
-    return signatures
+def ajouter_arguments(parser):
+    ajouter_arguments_minhash(
+        parser,
+        entree=config.GENRES_TAGS_SYNOPSIS_TRAIN,
+        sortie=config.RESULTS_DIR / "minhash" / "prediction_genres_tags_synopsis.csv",
+        seuil=0.1,
+    )
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", type=Path,
-                        default=PROJECT_DIR / "archive" / "anime_genres_tags_synopsis.train")
-    parser.add_argument("--output", type=Path,
-                        default=PROJECT_DIR / "data" / "prediction_genres_tags_synopsis.csv")
-    parser.add_argument("--num-hashes", type=int, default=NUM_HASHES)
-    parser.add_argument("--seed", type=int, default=HASH_SEED)
-    parser.add_argument("--threshold", type=float, default=0.1)
-    args = parser.parse_args()
-    if args.num_hashes < 1 or not 0 <= args.threshold <= 1:
-        parser.error("--num-hashes doit être positif et --threshold compris entre 0 et 1.")
-
+def executer(args):
+    verifier_arguments_minhash(args)
     debut = time.perf_counter()
     documents, ignores = charger_documents(args.input)
     print(f"{len(documents)} animes, {ignores} synopsis trop courts ignorés.", flush=True)
@@ -89,7 +71,3 @@ def main():
     paires = exporter_similarites(documents, signatures, args.output, args.threshold)
     print(f"{paires} paires avec Jaccard estimé > {args.threshold} : {args.output}")
     print(f"Durée : {time.perf_counter() - debut:.2f} s.")
-
-
-if __name__ == "__main__":
-    main()

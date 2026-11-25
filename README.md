@@ -1,49 +1,135 @@
 # sjtu-data-mining-project
 
+## Environnement
+
+Python 3.12, sans venv :
+
+```powershell
+python -m pip install -r requirements.txt
+copy .env.example .env          # puis renseigner MAL_CLIENT_ID, KAGGLE_USERNAME, KAGGLE_KEY
+python scripts/check_env.py     # vérifie modules, GPU, catalogue et clés
+```
+
+`torch` s'installe par défaut en version CPU. Pour utiliser le GPU NVIDIA
+(entraînement du Transformer, embeddings plus rapides), installer la version CUDA
+(vérifier la commande exacte sur pytorch.org) :
+
+```powershell
+python -m pip install torch --index-url https://download.pytorch.org/whl/cu126 --force-reinstall
+```
+
+## Lancer les méthodes
+
+Tout passe par `src/main.py`, qui exécute les étapes et méthodes demandées, dans l'ordre :
+
+```powershell
+python src/main.py --list                                # étapes et méthodes disponibles
+python src/main.py download_interactions prepare_interactions   # une fois : listes MAL -> matrices
+python src/main.py popularity item_knn ease              # évaluer plusieurs méthodes
+python src/main.py ease --lam 300 --split test           # options transmises aux méthodes
+python src/main.py ease --help                           # options d'une méthode
+python -B -m unittest discover -s tests -v               # tests
+```
+
+Les méthodes de recommandation sont évaluées sur le même protocole
+(`src/common/evaluation.py`). Chaque exécution ajoute une ligne à
+`results/recommandation/resultats.csv` et affiche les voisins de *Attack on Titan*
+(`--exemple <mal_id>` pour un autre anime, `--exemple 0` pour aucun).
+
+**Ajouter une méthode** : créer `src/methods/<nom>.py` contenant `DESCRIPTION`,
+`ajouter_arguments(parser)` et `executer(args)`, puis l'enregistrer dans
+`METHODES` (`src/main.py`). Pour une méthode de recommandation, `executer` entraîne
+le modèle puis appelle `lancer_evaluation(nom, scorer, args, params)`, où
+`scorer(X)` renvoie les scores des animes pour les utilisateurs de la matrice `X`.
+
+## Organisation
+
+| Chemin | Contenu | Versionné |
+| --- | --- | --- |
+| `src/main.py` | Lanceur | oui |
+| `src/config.py` | Chemins, clés API (lues dans `.env`), graine | oui |
+| `src/methods/` | Une méthode par fichier (MinHash, popularité, Item-KNN, EASE...) | oui |
+| `src/preparation/` | Téléchargement et préparation des données | oui |
+| `src/common/` | Code partagé : MinHash, chargement des splits, évaluation | oui |
+| `scripts/check_env.py` | Vérification de l'environnement | oui |
+| `tests/` | Tests unitaires | oui |
+| `data/content/` | Catalogue de 4 985 animes et fichiers `.train` dérivés | oui |
+| `data/raw/` | Données téléchargées (Kaggle, API) | non |
+| `data/processed/` | Matrices utilisateurs x animes et splits d'évaluation | non |
+| `models/` | Modèles entraînés, embeddings | non |
+| `results/` | Paires MinHash, tableau comparatif des méthodes | oui |
+
+## Données d'interactions
+
+`prepare_interactions` lit `animelist.csv` (Kaggle *Anime Recommendation Database
+2020* : 109 M lignes, 325 770 utilisateurs) et ne garde que les animes de notre
+catalogue présents dans ces listes (4 017 sur 4 985 ; les plus récents sont absents).
+
+- **Positif** : statut en cours, terminé ou en pause, sauf note de 1 à 4.
+  « Abandonné » compte comme vu (jamais recommandé) mais pas comme positif ;
+  « prévu » est ignoré.
+- **Échantillon** : 100 000 utilisateurs ayant au moins 10 positifs ; animes
+  positifs chez au moins 5 utilisateurs d'entraînement, soit 3 814 animes.
+- **Splits** : 90 000 utilisateurs d'entraînement ; 5 000 de validation et 5 000
+  de test, absents de l'entraînement (comme un profil MAL saisi dans la démo).
+  Pour eux, 20 % des positifs sont masqués et doivent être retrouvés.
+- Options : `--num-users`, `--min-positives`, `--val-users`, `--holdout`, `--seed`...
+
+Premiers résultats (split `val`, paramètres par défaut, non réglés) :
+
+| Méthode | Recall@10 | nDCG@10 | HitRate@10 | Couverture@10 | Popularité moy.@10 |
+| --- | --- | --- | --- | --- | --- |
+| popularity | 0,238 | 0,262 | 0,776 | 2,1 % | 0,501 |
+| item_knn (k = 100, shrink = 10) | 0,455 | 0,491 | 0,942 | 36,5 % | 0,327 |
+| ease (λ = 500) | **0,688** | **0,724** | **0,979** | **57,5 %** | **0,229** |
+
+Recall@K est normalisé par min(K, nombre de cibles) ; les utilisateurs ont en
+moyenne environ 44 cibles, donc Recall@10 vaut ici la précision@10. La popularité
+moyenne est la part des utilisateurs d'entraînement ayant vu les animes recommandés
+(plus bas = recommandations moins évidentes).
+
 ## MinHash sur les genres et tags
 
 ```powershell
-python archive/dataset_modifier.py
-python src/minhash_genres_tags.py
+python src/main.py prepare_content minhash_genres_tags
 ```
 
-Le premier script crée notamment `archive/anime_genres_tags.train` : trois
+`prepare_content` crée notamment `data/content/anime_genres_tags.train` : trois
 champs séparés par des tabulations, sans en-tête (`id`, `genres`, `tags`).
 Ce fichier conserve les animes ayant au moins un genre ou tag, indépendamment
 de leur synopsis : 4 985 animes dans le dataset actuel.
 
-Le second compare uniquement ces métadonnées, en utilisant un label complet
+`minhash_genres_tags` compare uniquement ces métadonnées, en utilisant un label complet
 par shingle (`k = 1`). Ainsi, `Slice of Life` reste une seule catégorie, l'ordre
 des labels n'a pas d'effet et les doublons sont supprimés. La casse et les espaces
 sont normalisés ; les préfixes `genre:` et `tag:` distinguent les deux champs.
 Chaque label a le même poids. Les ensembles vides sont ignorés.
 
 Les signatures utilisent 128 fonctions de hachage avec une graine fixe (42).
-Le traitement des synopsis (`python src/main.py`) utilise les mêmes 128 fonctions :
-les paramètres et coefficients sont partagés via `src/minhash_common.py`.
+Le traitement des synopsis (`python src/main.py minhash_synopsis`) utilise les mêmes
+128 fonctions : les paramètres et coefficients sont partagés via `src/common/minhash.py`.
 Les synopsis conservent leurs shingles de trois mots.
 Sur 20 000 paires tirées au hasard avec la graine 123, l'erreur absolue moyenne
 par rapport au Jaccard exact est de 0,01376, contre 0,04096 avec 10 fonctions.
 Cette mesure concerne ce dataset et cet échantillon.
 
 Les paires dont le Jaccard **estimé est strictement supérieur à 0,5** sont écrites
-dans `data/prediction_genres_tags.csv`, avec le Jaccard exact pour vérification
+dans `results/minhash/prediction_genres_tags.csv`, avec le Jaccard exact pour vérification
 (colonnes `article1,article2,Est. J,Act. J`). Le seuil initial de 0,5 est configurable,
 de même que le nombre de fonctions et la graine :
 
 ```powershell
-python src/minhash_genres_tags.py --num-hashes 256 --threshold 0.3 --seed 42
-python -B -m unittest discover -s tests -v
+python src/main.py minhash_genres_tags --num-hashes 256 --threshold 0.3 --seed 42
 ```
 
 ## MinHash sur les genres, tags et synopsis combinés
 
 ```powershell
-python src/minhash_genres_tags_synopsis.py
+python src/main.py minhash_genres_tags_synopsis
 ```
 
-Ce troisième traitement lit `archive/anime_genres_tags_synopsis.train`, généré
-par `dataset_modifier.py` : quatre champs séparés par des tabulations, sans en-tête
+Ce troisième traitement lit `data/content/anime_genres_tags_synopsis.train`, généré
+par `prepare_content` : quatre champs séparés par des tabulations, sans en-tête
 (`id`, `genres`, `tags`, `synopsis`). Il utilise les mêmes 4 974 animes que les
 synopsis seuls et les mêmes 128 fonctions de hachage (graine 42).
 
@@ -55,7 +141,7 @@ long contribue davantage de shingles que les métadonnées ; ce calcul ne donne
 pas un poids égal aux trois champs.
 
 Les paires dont le Jaccard estimé est strictement supérieur à 0,1 sont exportées
-dans `data/prediction_genres_tags_synopsis.csv`, avec leur Jaccard exact calculé
+dans `results/minhash/prediction_genres_tags_synopsis.csv`, avec leur Jaccard exact calculé
 sur l'ensemble combiné. Les options `--input`, `--output`, `--num-hashes`,
 `--seed` et `--threshold` fonctionnent comme pour les genres/tags seuls.
 

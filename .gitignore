@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+# Environnements (le projet n'utilise pas de venv, mais au cas où)
+.venv/
+venv/
+
+# Secrets (MAL_CLIENT_ID, KAGGLE_KEY...)
+.env
+
+# Données volumineuses téléchargées ou générées
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# Modèles entraînés et caches
+models/*
+!models/.gitkeep
+.cache/
+
+# Éditeurs / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Paquets envoyés à Kaggle et sorties téléchargées
+.kaggle_build/
