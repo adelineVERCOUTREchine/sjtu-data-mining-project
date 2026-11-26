@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block page %}settings{% endblock %}
+
+{% block content %}
+<section class="page-head">
+  <div>
+    <h1>Similarity settings</h1>
+    <p class="sub">Choose how much each score counts toward an anime's combined similarity. The weights are relative, so only the balance between them matters.</p>
+  </div>
+</section>
+
+<form id="settings-form" class="settings" novalidate>
+  <div id="scores" class="scores" aria-live="polite"><p class="loading">Loading settings...</p></div>
+
+  <div class="split" id="split" aria-hidden="true"></div>
+
+  <div class="settings-actions">
+    <button type="submit" class="btn" id="apply" disabled>Apply and recalculate</button>
+    <button type="button" class="btn ghost" id="reset" disabled>Reset to equal weights</button>
+  </div>
+
+  <p class="status" id="status" role="status" aria-live="polite"></p>
+  <p class="hint" id="meta"></p>
+</form>
+{% endblock %}

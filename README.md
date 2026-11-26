@@ -229,3 +229,63 @@ Ensuite, je construirais un véritable benchmark MinHash contre TF-IDF, avant de
 Mon choix serait de concentrer le projet sur les idées 1 à 5, avec la carte interactive comme fonctionnalité supplémentaire si vous avez suffisamment de temps. Vous pourriez ainsi couvrir trois chapitres importants du cours — similarité, analyse de liens et détection de communautés — sans transformer le projet en simple application web.
 
 Le résultat serait à la fois une démonstration concrète utilisable, un projet techniquement intéressant et une expérimentation rigoureuse, ce qui me semble particulièrement adapté à AI3602.
+------------------------------
+
+
+#  Anime similarity browser
+
+## Run it
+
+```bash
+pip install -r requirements.txt
+# put anime_dataset.csv in ./data/
+# (results.csv is optional at first: generate it from the Settings page)
+python app.py          # http://127.0.0.1:5000
+```
+
+Other locations: set `ANIME_DATA_DIR`, or `ANIME_DATASET` / `ANIME_RESULTS` individually. `PORT` changes the port.
+
+## Pages
+
+1. **Popular** (`/`): all anime ordered by `popularity_rank`, with title search. Click one to open a side panel with its details and the titles most similar to it (by `combined_score`). Click a similar title to keep exploring; Back returns.
+2. **My list** (`/my-list`): upload your MyAnimeList export (`.xml` or `.xml.gz`).
+   - **Recommended for you**: a ranked list of unseen anime (see below).
+   - **Your list**: your anime ordered by *your* score (highest first), filterable by status and searchable.
+   - Clicking any anime opens the same similar-anime panel, with "Seen" / "Plan to watch" badges and a "hide ones I've seen" toggle.
+
+Your uploaded list is stored in `instance/lists/` and linked to your browser by a cookie, so it is still there after a restart.
+
+3. **Settings** (`/settings`): set the weight of each score (users, genres and tags). **Apply and recalculate** sends the weights to your FastAPI service, which rebuilds `results.csv`; the app then reloads the similarity data, so Popular, My list and the recommendations all use the new weights immediately. The last weights used are remembered.
+
+### Running the weights API
+
+Save your FastAPI file in this folder under a name that isn't `app.py` (that's the Flask app), for example `weights_api.py`, and start it **from this folder**:
+
+```bash
+uvicorn weights_api:app --port 8000
+```
+
+Its `data/results.csv` is then the same file this app reads. If the API runs elsewhere, set `ANIME_WEIGHTS_API` (default `http://127.0.0.1:8000`) and `ANIME_RESULTS` so both point to the same file; the app checks that the file really changed and tells you if not. `ANIME_WEIGHTS_API_TIMEOUT` (seconds, default 900) covers slow recalculations.
+
+The Settings page calls the API through Flask, not from the browser, because the API response includes every scored pair. The app sends `?include_data=false`; if you add that option to the endpoint (return only `weights`, `count`, `saved_to`) recalculation gets faster on big files.
+
+To add a score source later, add it to `SCORE_SPECS` and `SettingsRequest` in the API, and one entry to `SCORE_WEIGHTS` in `app.py`; the page builds its sliders from that list.
+
+## How recommendations are scored
+
+For every anime you rated at or above the chosen minimum (default 8):
+
+    weight   = (your_score - 4) / 6          # 8 -> 0.67, 9 -> 0.83, 10 -> 1.0
+    priority = sum( weight * combined_score(liked_anime, candidate) )
+
+Candidates linked to many anime you love, or very strongly to a few, rise to the top. Each row shows which of your favorites led to it.
+
+- **Excluded**: Completed, Watching, On-Hold and Dropped.
+- **Kept**: Plan to Watch (they're unseen), tagged "In your plan to watch". Untick "Include my plan to watch" to hide them.
+- Unrated (score 0) entries are not used as "liked" anime.
+
+## Notes
+
+- `results.csv` pairs are treated as undirected (each pair is indexed both ways; the best score wins if both directions exist).
+- Memory: by default the 200 best neighbours per anime are kept (`ANIME_MAX_NEIGHBORS`, `0` = keep all). Raise it if you want deeper "similar" lists.
+- The page loads the Bricolage Grotesque font from Google Fonts; it falls back to system fonts offline.

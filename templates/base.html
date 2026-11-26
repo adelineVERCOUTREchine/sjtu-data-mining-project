@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{% endblock %} - AI3602 Anime Recommendation Project</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body data-page="{% block page %}{% endblock %}">
+  <header class="top">
+    <a class="brand" href="{{ url_for('popular') }}">Kindred</a>
+    <nav aria-label="Main">
+      <a href="{{ url_for('popular') }}" {% if request.endpoint == 'popular' %}class="on" aria-current="page"{% endif %}>Popular</a>
+      <a href="{{ url_for('my_list') }}" {% if request.endpoint == 'my_list' %}class="on" aria-current="page"{% endif %}>My list</a>
+      <a href="{{ url_for('settings_page') }}" {% if request.endpoint == 'settings_page' %}class="on" aria-current="page"{% endif %}>Settings</a>
+    </nav>
+  </header>
+
+  <main>{% block content %}{% endblock %}</main>
+
+  <div id="scrim" hidden></div>
+  <aside id="drawer" role="dialog" aria-modal="true" aria-label="Anime details" aria-hidden="true" tabindex="-1">
+    <div class="drawer-bar">
+      <button type="button" id="drawer-back" class="ghost" hidden>Back</button>
+      <span class="spacer"></span>
+      <button type="button" id="drawer-close" class="ghost">Close</button>
+    </div>
+    <div id="drawer-body"></div>
+  </aside>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Recommandations Anime — Export MAL</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-hover: #0284c7;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    .container {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 32px 20px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 1.75rem;
+    }
+
+    .subtitle {
+      margin: 0 0 24px;
+      color: var(--muted);
+    }
+
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      align-items: center;
+      margin-top: 16px;
+    }
+
+    label {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.95rem;
+    }
+
+    select, button {
+      background: #0f172a;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 0.95rem;
+      cursor: pointer;
+    }
+
+    button.primary {
+      background: var(--accent);
+      color: #082f49;
+      border: none;
+      font-weight: 600;
+    }
+
+    button.primary:hover {
+      background: var(--accent-hover);
+      color: #fff;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      font-size: 0.95rem;
+      color: var(--muted);
+    }
+
+    .stats strong {
+      color: var(--text);
+    }
+
+    .error {
+      color: #f87171;
+      margin-top: 12px;
+      font-weight: 500;
+    }
+
+    .results {
+      display: grid;
+      gap: 14px;
+    }
+
+    .rec-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+    }
+
+    .rec-title {
+      margin: 0 0 6px;
+      font-size: 1.15rem;
+    }
+
+    .rec-format {
+      font-size: 0.85rem;
+      color: var(--accent);
+      font-weight: 600;
+      margin-left: 6px;
+    }
+
+    .rec-reason {
+      margin: 0 0 8px;
+      color: #e2e8f0;
+      font-size: 0.95rem;
+    }
+
+    .rec-meta {
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    .rec-side {
+      text-align: right;
+      min-width: 110px;
+    }
+
+    .affinity {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <h1>Recommandations personnalisées</h1>
+    <p class="subtitle">Importez votre export XML MyAnimeList pour obtenir des suggestions basées sur vos notes.</p>
+
+    <section class="panel">
+      <div>
+        <label for="xmlFile"><strong>Fichier XML MyAnimeList (.xml) :</strong></label>
+        <input id="xmlFile" type="file" accept=".xml,text/xml" />
+      </div>
+
+      <div id="statsBar" class="stats" style="display: none; margin-top: 14px;">
+        <span>Profil : <strong id="statUser">—</strong></span>
+        <span>Entrées : <strong id="statTotal">0</strong></span>
+        <span>Notés : <strong id="statScored">0</strong></span>
+        <span>Moyenne : <strong id="statAvg">—</strong></span>
+      </div>
+
+      <div class="controls">
+        <label>
+          Note min. favoris :
+          <select id="minLikedScore">
+            <option value="7">7 / 10</option>
+            <option value="8" selected>8 / 10</option>
+            <option value="9">9 / 10</option>
+          </select>
+        </label>
+
+        <label>
+          <input id="includePtw" type="checkbox" />
+          Inclure mon <em>Plan to Watch</em>
+        </label>
+
+        <button id="btnRecommend" class="primary" type="button" disabled>
+          Générer les recommandations
+        </button>
+      </div>
+
+      <p id="errorMsg" class="error" role="alert"></p>
+    </section>
+
+    <section id="resultsContainer" class="results"></section>
+  </main>
+
+  <script>
+    const xmlInput = document.getElementById("xmlFile");
+    const btnRecommend = document.getElementById("btnRecommend");
+    const errorMsg = document.getElementById("errorMsg");
+    const resultsContainer = document.getElementById("resultsContainer");
+
+    const statsBar = document.getElementById("statsBar");
+    const statUser = document.getElementById("statUser");
+    const statTotal = document.getElementById("statTotal");
+    const statScored = document.getElementById("statScored");
+    const statAvg = document.getElementById("statAvg");
+
+    let parsedEntries = [];
+    let dismissedIds = new Set();
+
+    function getTagText(parent, tagName) {
+      const el = parent.getElementsByTagName(tagName)[0];
+      return el && el.textContent ? el.textContent.trim() : "";
+    }
+
+    function parseMalXml(xmlText) {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(xmlText, "application/xml");
+
+      if (doc.getElementsByTagName("parsererror").length > 0) {
+        throw new Error("Le fichier XML est invalide ou mal formé.");
+      }
+
+      const username = getTagText(doc.documentElement, "user_name") || "Utilisateur MAL";
+      const nodes = Array.from(doc.getElementsByTagName("anime"));
+      const byId = new Map();
+
+      for (const node of nodes) {
+        const malId = Number(getTagText(node, "series_animedb_id"));
+        if (!Number.isFinite(malId) || malId <= 0) continue;
+
+        const title = getTagText(node, "series_title") || `Anime #${malId}`;
+        const rawScore = Number(getTagText(node, "my_score"));
+        const score = Number.isFinite(rawScore) ? Math.max(0, Math.min(10, rawScore)) : 0;
+        const status = getTagText(node, "my_status") || "Unknown";
+        const format = getTagText(node, "series_type") || "";
+
+        const existing = byId.get(malId);
+        if (!existing || score > existing.score) {
+          byId.set(malId, { malId, title, score, status, format });
+        }
+      }
+
+      return { username, entries: Array.from(byId.values()) };
+    }
+
+    function updateStats(username, entries) {
+      const scored = entries.filter((e) => e.score > 0);
+      const avg = scored.length
+        ? (scored.reduce((acc, item) => acc + item.score, 0) / scored.length).toFixed(2)
+        : "—";
+
+      statUser.textContent = username;
+      statTotal.textContent = entries.length;
+      statScored.textContent = scored.length;
+      statAvg.textContent = avg === "—" ? "—" : `${avg}/10`;
+      statsBar.style.display = "flex";
+    }
+
+    xmlInput.addEventListener("change", async (event) => {
+      const file = event.target.files?.[0];
+      errorMsg.textContent = "";
+      resultsContainer.innerHTML = "";
+      dismissedIds.clear();
+
+      if (!file) return;
+
+      try {
+        const text = await file.text();
+        const parsed = parseMalXml(text);
+        parsedEntries = parsed.entries;
+        updateStats(parsed.username, parsedEntries);
+        btnRecommend.disabled = parsedEntries.length === 0;
+      } catch (err) {
+        parsedEntries = [];
+        btnRecommend.disabled = true;
+        errorMsg.textContent = err.message || "Impossible de lire le fichier XML.";
+      }
+    });
+
+    function renderRecommendations(items) {
+      const filtered = items.filter((item) => !dismissedIds.has(item.mal_id));
+      resultsContainer.innerHTML = "";
+
+      if (filtered.length === 0) {
+        resultsContainer.innerHTML = `<div class="panel">Aucune recommandation trouvée avec ces filtres.</div>`;
+        return;
+      }
+
+      for (const item of filtered) {
+        const card = document.createElement("article");
+        card.className = "rec-card";
+
+        const genresText = (item.genres || []).join(", ") || "—";
+        const reasonsText = (item.reasons || []).join(" • ");
+        const affinityPct = Math.round((item.affinity || 0) * 100);
+
+        card.innerHTML = `
+          <div>
+            <h2 class="rec-title">
+              ${item.title}
+              ${item.format ? `<span class="rec-format">${item.format}</span>` : ""}
+            </h2>
+            <p class="rec-reason">${reasonsText}</p>
+            <div class="rec-meta">Genres : ${genresText}</div>
+          </div>
+          <div class="rec-side">
+            <div class="affinity">${affinityPct}%</div>
+            <button type="button" data-id="${item.mal_id}">Masquer</button>
+          </div>
+        `;
+
+        card.querySelector("button").addEventListener("click", () => {
+          dismissedIds.add(item.mal_id);
+          renderRecommendations(items);
+        });
+
+        resultsContainer.appendChild(card);
+      }
+    }
+
+    btnRecommend.addEventListener("click", async () => {
+      if (parsedEntries.length === 0) return;
+
+      errorMsg.textContent = "";
+      btnRecommend.disabled = true;
+      btnRecommend.textContent = "Calcul en cours...";
+
+      try {
+        const payload = {
+          entries: parsedEntries,
+          min_liked_score: Number(document.getElementById("minLikedScore").value),
+          include_plan_to_watch: document.getElementById("includePtw").checked,
+          limit: 20,
+        };
+
+        const response = await fetch("/api/recommend", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "Erreur serveur lors du calcul.");
+        }
+
+        renderRecommendations(data.recommendations || []);
+      } catch (err) {
+        errorMsg.textContent = err.message || "Erreur réseau.";
+      } finally {
+        btnRecommend.disabled = false;
+        btnRecommend.textContent = "Générer les recommandations";
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}My list{% endblock %}
+{% block page %}mylist{% endblock %}
+
+{% block content %}
+<!-- Shown until a list has been uploaded -->
+<section id="upload-view" hidden>
+  <div class="page-head">
+    <div>
+      <h1>Bring your list</h1>
+      <p class="sub">Upload your MyAnimeList export and we'll rank your anime by your own scores and suggest what to watch next.</p>
+    </div>
+  </div>
+  <label class="drop" id="drop">
+    <input type="file" id="file" accept=".xml,.gz,application/xml,text/xml">
+    <strong>Drop your export here, or choose a file</strong>
+    <span>The .xml file from MyAnimeList's export page (.xml.gz also works)</span>
+  </label>
+  <p class="error" id="upload-error" role="alert" hidden></p>
+  <button type="button" id="cancel-replace" class="btn ghost" hidden>Keep my current list</button>
+</section>
+
+<!-- Shown once a list is loaded -->
+<section id="list-view" hidden>
+  <div class="page-head">
+    <div>
+      <h1 id="who">My list</h1>
+      <p class="sub" id="summary"></p>
+    </div>
+    <div class="actions">
+      <button type="button" id="replace" class="btn ghost">Replace list</button>
+      <button type="button" id="remove" class="btn ghost">Remove list</button>
+    </div>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button type="button" role="tab" id="tab-recs" aria-selected="true" data-tab="recs">Recommended for you</button>
+    <button type="button" role="tab" id="tab-list" aria-selected="false" data-tab="list">Your list</button>
+  </div>
+
+  <!-- Recommendations -->
+  <div id="panel-recs" role="tabpanel" aria-labelledby="tab-recs">
+    <div class="controls">
+      <label>Based on anime I rated
+        <select id="min-score">
+          <option value="10">10</option>
+          <option value="9">9 or higher</option>
+          <option value="8" selected>8 or higher</option>
+          <option value="7">7 or higher</option>
+          <option value="6">6 or higher</option>
+        </select>
+      </label>
+      <label class="check"><input type="checkbox" id="include-plan" checked> Include my plan to watch</label>
+    </div>
+    <p class="hint">Each suggestion is scored by adding up its similarity to every anime you rated highly, weighted by your score. Anime you've completed, are watching, put on hold or dropped are left out.</p>
+    <ol class="recs" id="recs"></ol>
+    <p class="empty" id="recs-empty" hidden>No suggestions yet. Try lowering the minimum score.</p>
+  </div>
+
+  <!-- Whole list -->
+  <div id="panel-list" role="tabpanel" aria-labelledby="tab-list" hidden>
+    <div class="controls">
+      <div class="chips" id="status-chips" role="group" aria-label="Filter by status"></div>
+      <label class="search">
+        <span class="sr">Search your list</span>
+        <input type="search" id="list-search" placeholder="Search your list" autocomplete="off">
+      </label>
+    </div>
+    <div class="grid" id="grid"></div>
+    <p class="empty" id="empty" hidden>Nothing matches.</p>
+    <div class="more"><button type="button" id="more" class="btn" hidden>Show more</button></div>
+  </div>
+</section>
+{% endblock %}
