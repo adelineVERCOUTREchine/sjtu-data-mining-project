@@ -39,7 +39,7 @@ GPU = "NvidiaTeslaT4"
 # Méthodes sans évaluation sur les listes MAL (pas besoin de prepare_interactions).
 SANS_INTERACTIONS = {"download_interactions", "prepare_content", "prepare_interactions",
                      "minhash_synopsis", "minhash_genres_tags", "minhash_genres_tags_synopsis",
-                     "embeddings_map"}
+                     "embeddings_map", "inspect_mal2025"}
 
 RUNNER = r'''
 """Généré par scripts/kaggle_run.py : exécute src/main.py sur Kaggle."""
@@ -56,6 +56,10 @@ projet = Path("/kaggle/tmp/projet")
 shutil.copytree(code, projet, dirs_exist_ok=True)
 brut = next(Path("/kaggle/input").rglob("animelist.csv")).parent
 os.environ["DMANIME_RAW_DIR"] = str(brut)
+mal2025 = [p.parent for p in Path("/kaggle/input").rglob("ratings.csv") if (p.parent / "details.csv").exists()]
+if mal2025:
+    os.environ["DMANIME_MAL2025_DIR"] = str(mal2025[0])
+    print("MAL 2025 :", mal2025[0], flush=True)
 # Un seul GPU : avec deux T4, PyTorch duplique le modèle (DataParallel) et sature la mémoire.
 os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")
 print("Code :", code, "| Listes MAL :", brut, flush=True)
@@ -133,7 +137,7 @@ def envoyer_notebook(api, utilisateur, code_ref, arguments, gpu):
         "id": f"{utilisateur}/{KERNEL_SLUG}", "title": KERNEL_SLUG, "code_file": "run.py",
         "language": "python", "kernel_type": "script", "is_private": True,
         "enable_gpu": gpu, "enable_internet": True,
-        "dataset_sources": [code_ref, config.KAGGLE_INTERACTIONS],
+        "dataset_sources": [code_ref, config.KAGGLE_INTERACTIONS, config.KAGGLE_MAL2025],
     }
     if gpu:
         metadata["machine_shape"] = GPU

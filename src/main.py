@@ -24,6 +24,7 @@ PREPARATION = {
     "download_interactions": "preparation.download_interactions",
     "prepare_content": "preparation.prepare_content",
     "prepare_interactions": "preparation.prepare_interactions",
+    "inspect_mal2025": "preparation.inspect_mal2025",
 }
 
 METHODES = {
@@ -38,6 +39,7 @@ METHODES = {
     "popularity": "methods.popularity",
     "item_knn": "methods.item_knn",
     "ease": "methods.ease",
+    "funnel": "methods.funnel",
 }
 
 TOUT = {**PREPARATION, **METHODES}

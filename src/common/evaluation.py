@@ -29,6 +29,8 @@ def ajouter_arguments_evaluation(parser):
 
 def top_k(scores, k):
     """Indices des k meilleurs scores par ligne, triés par score décroissant."""
+    if k >= scores.shape[1]:
+        return np.argsort(-scores, axis=1, kind="stable")
     partiel = np.argpartition(-scores, k, axis=1)[:, :k]
     ordre = np.argsort(-np.take_along_axis(scores, partiel, axis=1), axis=1)
     return np.take_along_axis(partiel, ordre, axis=1)
@@ -56,7 +58,7 @@ def evaluer(scorer, split, popularite, batch_size=2000):
         valides = n_cibles > 0
         for k in K_LIST:
             hits = touches[:, :k]
-            dcg = (hits * remise[:k]).sum(axis=1)
+            dcg = (hits * remise[:hits.shape[1]]).sum(axis=1)  # liste < k si petit catalogue
             idcg = np.array([remise[:min(n, k)].sum() for n in n_cibles])
             sommes[f"recall@{k}"] += (hits.sum(axis=1)[valides] / np.minimum(n_cibles, k)[valides]).sum()
             sommes[f"ndcg@{k}"] += (dcg[valides] / idcg[valides]).sum()
@@ -105,6 +107,10 @@ def lancer_evaluation(nom, scorer, args, params):
             print(f"  {cle:<24} {valeur:.4f}")
 
     DOSSIER.mkdir(parents=True, exist_ok=True)
+    meta = config.PROCESSED_DIR / "meta.json"
+    if meta.exists():  # dataset d'interactions utilisé (2020 ou 2025)
+        params = {**params, "donnees": json.loads(meta.read_text(encoding="utf-8"))
+                  ["params"].get("source", "2020")}
     ligne = {"date": datetime.now().isoformat(timespec="seconds"), "methode": nom,
              "split": args.split, "params": json.dumps(params, sort_keys=True), **resultats}
     tableau = DOSSIER / "resultats.csv"

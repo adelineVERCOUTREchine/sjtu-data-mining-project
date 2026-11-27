@@ -1,6 +1,9 @@
 """Construire les matrices utilisateurs x animes et les splits d'évaluation.
 
-Entrée : data/raw/anime-recommendation-database-2020/animelist.csv (109 M lignes).
+Entrées (--source) :
+  2025  ratings.csv du snapshot MAL d'octobre 2025 (124 M lignes, 309 k utilisateurs),
+        config.MAL2025_DIR (monté automatiquement sur Kaggle) ; défaut
+  2020  animelist.csv de Kaggle « Anime Recommendation Database 2020 » (109 M lignes)
 Sorties (data/processed/) :
   items.csv                 index de colonne -> mal_id, titre
   train.npz                 utilisateurs d'entraînement x animes, 1 = interaction positive
@@ -27,10 +30,14 @@ import scipy.sparse as sp
 
 import config
 
-DESCRIPTION = "Filtrer animelist.csv, échantillonner les utilisateurs, créer les splits"
+DESCRIPTION = "Filtrer les listes MAL (2025 ou 2020), échantillonner, créer les splits"
+STATUTS_2025 = "CASE status WHEN 'watching' THEN 1 WHEN 'completed' THEN 2 "                "WHEN 'on_hold' THEN 3 WHEN 'dropped' THEN 4 WHEN 'plan_to_watch' THEN 6 END"
 
 
 def ajouter_arguments(parser):
+    parser.add_argument("--memory-limit", help="limite mémoire DuckDB, par exemple 2GB sur portable")
+    parser.add_argument("--source", choices=("2025", "2020"), default="2025",
+                        help="listes MAL d'octobre 2025 ou de 2020")
     parser.add_argument("--num-users", type=int, default=100_000,
                         help="nombre d'utilisateurs échantillonnés (0 = tous)")
     parser.add_argument("--min-positives", type=int, default=10,
@@ -44,11 +51,25 @@ def ajouter_arguments(parser):
     parser.add_argument("--seed", type=int, default=config.SEED)
 
 
-def charger_interactions(args):
-    source = config.INTERACTIONS_RAW_DIR / "animelist.csv"
+def requete_vues(args):
+    """SELECT normalisé : user_id, anime_id, rating, statut (1 à 4, 6), sur le catalogue."""
+    if args.source == "2020":
+        source = config.INTERACTIONS_RAW_DIR / "animelist.csv"
+        colonnes = ("user_id::VARCHAR AS utilisateur, anime_id::INTEGER AS anime_id, "
+                    "rating::TINYINT AS rating, watching_status::TINYINT AS statut")
+    else:
+        source = config.MAL2025_DIR / "ratings.csv"
+        colonnes = (f"username AS utilisateur, anime_id::INTEGER AS anime_id, "
+                    f"score::TINYINT AS rating, ({STATUTS_2025})::TINYINT AS statut")
     if not source.exists():
-        raise FileNotFoundError(f"{source} absent : lancer d'abord download_interactions.")
-    con = duckdb.connect()
+        raise FileNotFoundError(f"{source} absent : lancer d'abord download_interactions "
+                                f"--source {args.source} (ou exécuter sur Kaggle).")
+    return f"SELECT {colonnes} FROM read_csv_auto('{source.as_posix()}')"
+
+
+def charger_interactions(args):
+    options = {"memory_limit": args.memory_limit, "threads": 4} if args.memory_limit else {}
+    con = duckdb.connect(config=options)
     adultes = "WHERE NOT is_adult" if config.EXCLURE_ADULTES else ""
     con.execute(f"""
         CREATE TEMP TABLE catalogue AS
@@ -57,22 +78,24 @@ def charger_interactions(args):
     """)
     con.execute(f"""
         CREATE TEMP TABLE vues AS
-        SELECT user_id::INTEGER AS user_id, anime_id::INTEGER AS anime_id,
-               rating::TINYINT AS rating, watching_status::TINYINT AS statut,
-               (watching_status IN (1, 2, 3) AND NOT rating BETWEEN 1 AND 4) AS positif
-        FROM read_csv_auto('{source.as_posix()}')
-        WHERE watching_status IN (1, 2, 3, 4)
+        SELECT utilisateur, anime_id, rating, statut,
+               (statut IN (1, 2, 3) AND NOT rating BETWEEN 1 AND 4) AS positif
+        FROM ({requete_vues(args)})
+        WHERE statut IN (1, 2, 3, 4)
           AND anime_id IN (SELECT anime_id FROM catalogue)
     """)
     limite = f"LIMIT {args.num_users}" if args.num_users else ""
+    # Identifiant entier par utilisateur ; tirage reproductible (hash + graine).
     con.execute(f"""
         CREATE TEMP TABLE utilisateurs AS
-        SELECT user_id FROM vues GROUP BY user_id
-        HAVING sum(positif::INTEGER) >= {args.min_positives}
-        ORDER BY hash(user_id + {args.seed} * 1000003), user_id {limite}
+        SELECT utilisateur, row_number() OVER (ORDER BY utilisateur) AS user_id FROM (
+            SELECT utilisateur FROM vues GROUP BY utilisateur
+            HAVING sum(positif::INTEGER) >= {args.min_positives}
+            ORDER BY hash(utilisateur || '-{args.seed}'), utilisateur {limite})
     """)
     df = con.execute("""
-        SELECT v.* FROM vues v JOIN utilisateurs u USING (user_id)
+        SELECT u.user_id::INTEGER AS user_id, v.anime_id, v.rating, v.statut, v.positif
+        FROM vues v JOIN utilisateurs u USING (utilisateur)
     """).df()
     con.close()
     # Quelques couples (utilisateur, anime) apparaissent plusieurs fois.

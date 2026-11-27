@@ -1,317 +1,300 @@
-# sjtu-data-mining-project
+# Recommandation d'animés à partir d'un profil MyAnimeList ou d'un animé choisi
 
-## Environnement
+Projet de data mining (SJTU AI3602, automne 2026). On compare des méthodes de
+**filtrage collaboratif** (ce que regardent les utilisateurs) et de **contenu**
+(synopsis, genres, tags) pour deux tâches :
+
+- **à partir d'un animé** : « j'ai aimé *Death Note*, que regarder ensuite ? » ;
+- **à partir d'un profil MAL** : recommander des animés à un utilisateur d'après sa liste.
+
+Documentation : [plan et état de l'art](docs/methodes_recommandation.md) ·
+[consignes du cours](docs/consignes_projet.md) · [méthodes MinHash](docs/minhash.md) ·
+[idées initiales](docs/idees_initiales.md)
+
+## Installation
 
 Python 3.12, sans venv :
 
 ```powershell
 python -m pip install -r requirements.txt
-copy .env.example .env          # puis renseigner MAL_CLIENT_ID, KAGGLE_USERNAME, KAGGLE_KEY
+copy .env.example .env          # renseigner MAL_CLIENT_ID et KAGGLE_API_TOKEN
 python scripts/check_env.py     # vérifie modules, GPU, catalogue et clés
 ```
 
-`torch` s'installe par défaut en version CPU. Pour utiliser le GPU NVIDIA
-(entraînement du Transformer, embeddings plus rapides), installer la version CUDA
-(vérifier la commande exacte sur pytorch.org) :
+## Utilisation
+
+### Démo interactive locale
+
+Depuis la racine du projet, lancer la démo en anglais avec le modèle déjà exporté :
 
 ```powershell
-python -m pip install torch --index-url https://download.pytorch.org/whl/cu126 --force-reinstall
+python -m streamlit run src/demo.py --server.address 127.0.0.1
 ```
 
-## Lancer les méthodes
+En mode **Choose favourites**, choisir un à trois titres. Le classement des dix suggestions se recalcule à chaque
+modification. Pour chaque suggestion, la dernière colonne indique le titre choisi
+dont le coefficient EASE contribue le plus au score. Les titres sélectionnés sont exclus.
+Le modèle local `models/ease_demo.npz` contient les poids,
+les titres dans l'ordre des colonnes, les identifiants MAL et l'édition des données.
+Ce fichier est local et ignoré par Git. Pour déplacer la démo, le copier au même
+emplacement avec le code. Le calcul des suggestions fonctionne hors ligne.
 
-Tout passe par `src/main.py`, qui exécute les étapes et méthodes demandées, dans l'ordre :
+Le sélecteur et le top 10 présentent une entrée par série. La table locale
+`data/content/series.csv` associe les identifiants MAL à partir des relations
+AniList entre suites et préquelles, complétées par les relations MyAnimeList
+pour les fiches absentes et par les titres de saison dont la base est identifiable
+sans ambiguïté. Elle rattache aussi les histoires annexes et
+compilations dont la série parente est identifiable. Un titre sans lien connu
+garde sa propre entrée. Le script `scripts/prepare_series.py` construit cette table.
+
+Chaque série déjà entamée ou abandonnée est exclue intégralement. Pour le classement,
+les saisons positives d'une même série contribuent par leur moyenne. Le meilleur
+score d'une saison détermine le rang de la série candidate, et le résultat affiche
+son point d'entrée disponible dans le modèle.
+
+Dans **Compare recommendation maps**, sélectionner une ou deux méthodes. Chaque carte
+montre le même profil, son propre classement et les séries communes aux deux listes
+sont comptées sous les tableaux. Les coordonnées des cartes sont indépendantes.
+Le curseur **Originality** écarte les séries les plus populaires avant de choisir
+le top de chaque méthode. À 0 %, tout le catalogue est éligible. À 75 %, seuls
+les titres du quart le moins populaire (et les ex æquo au seuil) sont éligibles.
+Le réglage initial est de 25 %. L'audience d'une série est le nombre de membres
+MAL de sa fiche la plus suivie dans le catalogue local.
+**Item-KNN** repose sur les co-visionnages (100 voisins, régularisation 10) et
+**Synopsis (BGE)** sur la similarité cosinus des embeddings de synopsis.
+Pour ces deux méthodes, copier aussi `models/comparison/` sur le portable ou
+exécuter `python scripts/prepare_comparison_maps.py` avec les données locales
+et les embeddings du projet. Les deux cartes fonctionnent ensuite hors ligne.
+
+La carte **EASE** place chaque série à partir de la moyenne des lignes
+de la matrice EASE de ses saisons. Les coefficients internes à la série sont mis
+à zéro, puis les vecteurs normalisés sont réduits par SVD (48 dimensions) et
+projetés par t-SNE en 2D. La proximité donne une indication locale de similarité
+entre profils de recommandation. Le classement est calculé dans le modèle complet.
+Les positions restent fixes quand le profil change. Les losanges bleus identifient
+les séries vues ou choisies et les numéros orange correspondent au top affiché.
+La projection locale `results/embeddings/espace_ease.npz` est utilisée si sa
+signature correspond au modèle et au regroupement des saisons. Sinon la démo
+recalcule les positions et les garde en mémoire.
+
+En mode **MyAnimeList**, trois entrées permettent de charger le profil :
+
+- **Compte MAL** — Dans les paramètres de l'application sur MyAnimeList
+  (`https://myanimelist.net/apiconfig`), enregistrer exactement
+  `http://127.0.0.1:8501/` comme URL de redirection et renseigner
+  `MAL_CLIENT_ID` dans `.env`. Pour une autre adresse, faire correspondre
+  `MAL_REDIRECT_URI` à l'adresse enregistrée et utiliser ce même serveur Streamlit.
+  Si le client est confidentiel, renseigner aussi `MAL_CLIENT_SECRET`.
+  Cliquer sur **Connect my MyAnimeList account**, puis **Authorize on MyAnimeList**.
+  Autoriser sur MAL et revenir à l'onglet initial, qui charge automatiquement la liste.
+- **Liste publique** — Entrer le pseudo MAL et cliquer sur **Load public list**.
+  Cette option utilise le Client ID et fonctionne indépendamment de la redirection OAuth.
+- **Export hors ligne** — Depuis le lien d'export dans l'application, choisir
+  **Anime List** sur MAL et importer le fichier `.xml.gz` ou `.xml`.
+
+Pour la démo, les notes des saisons terminées, en cours ou en pause donnent une
+moyenne par série. Le seuil personnel est la moyenne des séries notées représentées
+dans le catalogue, avec un minimum de 6/10. Chaque série qui atteint le seuil
+contribue selon le poids `(note moyenne − 5) / 5`, y compris pour l'explication
+« Strongest contribution ». Sans note exploitable, les visionnages alimentent
+le profil à poids égal. Tous les titres de ces trois statuts et les
+titres abandonnés sont exclus des suggestions. Les titres prévus restent éligibles.
+La liste importée reste en mémoire dans la session jusqu'à **Forget this list** ou
+la fin de la session. Le jeton OAuth sert uniquement au chargement initial.
+
+Pour reproduire l'export et les deux évaluations à partir du fichier
+`data/raw/mal-2025/datasets/ratings.csv` de l'édition 2025 :
 
 ```powershell
-python src/main.py --list                                # étapes et méthodes disponibles
-python src/main.py download_interactions prepare_interactions   # une fois : listes MAL -> matrices
-python src/main.py popularity item_knn ease              # évaluer plusieurs méthodes
-python src/main.py ease --lam 300 --split test           # options transmises aux méthodes
-python src/main.py ease --help                           # options d'une méthode
-python -B -m unittest discover -s tests -v               # tests
+$env:DMANIME_PROCESSED_DIR = Join-Path $PWD 'data/processed/2025'
+python src/main.py prepare_interactions --source 2025 --memory-limit 2GB
+python src/main.py popularity ease --split test --lam 500 --save-demo --batch-size 256 --exemple 0
 ```
 
-Les méthodes de recommandation sont évaluées sur le même protocole
-(`src/common/evaluation.py`). Chaque exécution ajoute une ligne à
-`results/recommandation/resultats.csv` et affiche les voisins de *Attack on Titan*
-(`--exemple <mal_id>` pour un autre anime, `--exemple 0` pour aucun).
+### Méthodes en ligne de commande
 
-**Ajouter une méthode** : créer `src/methods/<nom>.py` contenant `DESCRIPTION`,
-`ajouter_arguments(parser)` et `executer(args)`, puis l'enregistrer dans
-`METHODES` (`src/main.py`). Pour une méthode de recommandation, `executer` entraîne
-le modèle puis appelle `lancer_evaluation(nom, scorer, args, params)`, où
-`scorer(X)` renvoie les scores des animes pour les utilisateurs de la matrice `X`.
+`src/main.py` exécute les étapes de préparation et les méthodes demandées dans l'ordre :
+
+```powershell
+python src/main.py --list                                     # étapes et méthodes
+python src/main.py download_interactions prepare_interactions # une fois : listes MAL -> matrices
+python src/main.py popularity item_knn ease                   # évaluer plusieurs méthodes
+python src/main.py ease --lam 300 --split test                # options transmises aux méthodes
+python src/main.py ease --help                                # options d'une méthode
+python -B -m unittest discover -s tests -v                    # tests
+```
+
+**Calculs lourds sur Kaggle** (GPU T4 gratuit) : mêmes arguments ; le script envoie
+le code, exécute un notebook privé et rapatrie `results/` et `models/` :
+
+```powershell
+python scripts/kaggle_run.py synopsis_finetune                 # GPU (file d'attente possible)
+python scripts/kaggle_run.py --cpu embeddings_map              # sans GPU : pas d'attente
+python scripts/kaggle_run.py --fetch                           # récupérer la dernière exécution
+```
+
+`prepare_interactions` est ajouté automatiquement quand une méthode a besoin des
+listes MAL. Les embeddings déjà calculés (`models/embeddings/`) sont envoyés avec
+le code pour ne pas être ré-encodés.
+
+## Méthodes
+
+| Nom | Type | Tâche | Fichier |
+| --- | --- | --- | --- |
+| `minhash_synopsis` | Contenu : shingles de 3 mots | Paires d'animés similaires | [minhash_synopsis.py](src/methods/minhash_synopsis.py) |
+| `minhash_genres_tags` | Contenu : genres et tags | Paires d'animés similaires | [minhash_genres_tags.py](src/methods/minhash_genres_tags.py) |
+| `minhash_genres_tags_synopsis` | Contenu : les deux | Paires d'animés similaires | [minhash_genres_tags_synopsis.py](src/methods/minhash_genres_tags_synopsis.py) |
+| `synopsis_embeddings` | Contenu : Transformer (bge-base) + cosinus | Animé et profil | [synopsis_embeddings.py](src/methods/synopsis_embeddings.py) |
+| `synopsis_finetune` | Contenu : Transformer affiné sur les co-visionnages | Animés jamais regardés (cold-start) | [synopsis_finetune.py](src/methods/synopsis_finetune.py) |
+| `embeddings_map` | Visualisation UMAP | Carte interactive HTML | [embeddings_map.py](src/methods/embeddings_map.py) |
+| `popularity` | Baseline | Profil | [popularity.py](src/methods/popularity.py) |
+| `item_knn` | Filtrage collaboratif : cosinus item-item | Animé et profil | [item_knn.py](src/methods/item_knn.py) |
+| `ease` | Filtrage collaboratif : EASE^R (Steck, 2019) | Animé et profil | [ease.py](src/methods/ease.py) |
+| `funnel` | Entonnoir : retrieval (EASE, KNN, contenu, popularité) + re-ranking LightGBM LambdaMART | Profil | [funnel.py](src/methods/funnel.py) |
+
+**Ajouter une méthode** : créer `src/methods/<nom>.py` avec `DESCRIPTION`,
+`ajouter_arguments(parser)` et `executer(args)`, puis l'enregistrer dans `METHODES`
+([src/main.py](src/main.py)). Une méthode de recommandation entraîne son modèle puis
+appelle `lancer_evaluation(nom, scorer, args, params)`, où `scorer(X)` renvoie les
+scores des animés pour les utilisateurs de la matrice creuse `X`.
+
+## Données
+
+| Source | Contenu |
+| --- | --- |
+| [data/content/anime_dataset.csv](data/content/anime_dataset.csv) | Catalogue de 4 985 animés populaires (AniList, identifiants MAL) : titres, synopsis, genres, tags, studios, scores |
+| **Kaggle [*Anime Dataset 2025*](https://www.kaggle.com/datasets/neelagiriaditya/anime-dataset-jan-1917-to-oct-2025)** (défaut, CC BY-NC-SA 4.0) | Snapshot MAL d'**octobre 2025** : 124 M lignes de listes (309 k utilisateurs), 28 955 fiches, 105 k recommandations d'utilisateurs MAL |
+| Kaggle *Anime Recommendation Database 2020* (`--source 2020`) | 109 M lignes de listes MAL, 325 770 utilisateurs ; les animés sortis après 2020 en sont absents |
+
+Sur Kaggle, les deux datasets sont montés automatiquement (`scripts/kaggle_run.py`) ;
+en local, `download_interactions` télécharge celui de 2020 dans `data/raw/` et les
+fichiers légers de 2025 sont dans `data/raw/mal-2025/` (`inspect_mal2025` décrit
+leur structure).
+
+`prepare_interactions` garde les animés du catalogue présents dans ces listes et
+construit les matrices d'évaluation. Avec les données 2025, **4 749 animés** sur les
+4 922 tout public du catalogue sont couverts (contre 3 814 avec celles de 2020) :
+
+- **positif** : statut en cours, terminé ou en pause, sauf note de 1 à 4 ;
+  « abandonné » compte comme vu (jamais recommandé) mais pas comme positif ;
+- **échantillon** : 100 000 utilisateurs ayant au moins 10 positifs ; animés
+  positifs chez au moins 5 utilisateurs d'entraînement ;
+- **splits** : 90 000 utilisateurs d'entraînement, 5 000 de validation, 5 000 de
+  test, absents de l'entraînement (comme un profil saisi dans la démo) ; 20 % de
+  leurs positifs sont masqués et doivent être retrouvés ;
+- les **animés adultes** (`is_adult`, 63 animés) sont exclus partout
+  (`EXCLURE_ADULTES` dans [src/config.py](src/config.py)) ;
+- les lignes sont triées avant le tirage : une même graine donne les mêmes splits
+  sur toutes les machines.
+
+## Évaluation
+
+Code commun : [src/common/evaluation.py](src/common/evaluation.py). Pour chaque
+utilisateur de validation ou de test, la méthode reçoit 80 % de sa liste, classe
+tous les animés non vus, et on compare son top K aux 20 % masqués :
+
+- **Recall@K** : hits ÷ min(K, nombre de cibles) ; **nDCG@K** : idem, pondéré par le rang ;
+  **HitRate@K** : au moins un hit ;
+- **couverture@10** : part du catalogue recommandée à au moins un utilisateur ;
+  **popularité moyenne@10** : part des utilisateurs ayant vu les animés recommandés.
+
+Le split `val` sert à régler les paramètres ; `test` est réservé aux chiffres finaux.
+Les cibles sont tirées au hasard dans la liste (le dataset n'a pas de dates), ce qui
+donne des scores élevés : seules les comparaisons entre méthodes ont du sens.
+
+## Résultats
+
+### Test final du modèle utilisé par la démo
+
+Sur le catalogue MAL 2025 de 4 749 animés, EASE (λ = 500) et la popularité ont été
+entraînés sur les mêmes 90 000 utilisateurs et évalués sur les mêmes 5 000 utilisateurs
+de test. Leurs listes contenaient 263 139 titres masqués au total.
+
+| Méthode | Recall@10 | nDCG@10 | HitRate@10 | Couverture@10 |
+| --- | ---: | ---: | ---: | ---: |
+| Popularité | 0,2999 | 0,3300 | 0,8022 | 1,52 % |
+| EASE | 0,7328 | 0,7625 | 0,9714 | 53,11 % |
+
+EASE retrouve au moins un titre masqué parmi ses dix suggestions pour 97,14 % des
+utilisateurs de test. L'évaluation utilise tout l'historique visible de chaque profil.
+La démo accepte un profil MAL ou un à trois favoris saisis par le visiteur.
+Les chiffres du tableau mesurent le classement EASE par titre MAL, avant le regroupement par série.
+
+### Recommandation à partir d'un profil (split `val`, paramètres par défaut)
+
+Tableau complet : [results/recommandation/resultats.csv](results/recommandation/resultats.csv)
+(la source des données est dans la colonne `params`, champ `donnees`). Chaque série
+a été exécutée en une fois : même split, 5 000 utilisateurs de validation, animés
+adultes exclus.
+
+**Listes MAL d'octobre 2025** (4 749 animés) :
+
+| Méthode | Recall@10 | nDCG@10 | HitRate@10 | Couverture@10 | Popularité moy.@10 |
+| --- | --- | --- | --- | --- | --- |
+| popularity | 0,295 | 0,324 | 0,792 | 1,6 % | 0,560 |
+| item_knn (k = 100, shrink = 10) | 0,499 | 0,538 | 0,941 | 34,9 % | 0,405 |
+| **ease (λ = 500)** | **0,738** | **0,767** | **0,972** | **52,3 %** | 0,272 |
+| synopsis_embeddings (bge-base) | 0,029 | 0,027 | 0,222 | 5,5 % | 0,079 |
+
+**Entonnoir** (`funnel`, même split 2025) : l'étape 1 réunit 284 candidats par
+utilisateur, qui contiennent 63 % des animés masqués ; LightGBM (18 caractéristiques)
+les reclasse. Il apprend sur 5 000 utilisateurs d'entraînement réservés, que les
+générateurs n'ont pas vus ; la référence est donc EASE entraîné sur les mêmes
+85 000 utilisateurs.
+
+| Méthode | Recall@10 | nDCG@10 | HitRate@10 | Couverture@10 | Popularité moy.@10 |
+| --- | --- | --- | --- | --- | --- |
+| ease (85 000 utilisateurs) | 0,737 | 0,766 | 0,972 | 52,1 % | 0,273 |
+| **funnel** | **0,744** | **0,772** | **0,975** | 49,6 % | 0,293 |
+
+Gain modeste (+0,006 de nDCG@10) : le re-ranker s'appuie surtout sur le rang EASE
+(77 % du gain des arbres), puis sur la franchise déjà vue et la taille du profil.
+Les autres caractéristiques n'apportent presque rien d'autre qu'EASE.
+
+Listes de 2020 (3 814 animés), pour comparaison : nDCG@10 de 0,265 (popularity),
+0,494 (item_knn), 0,727 (ease) et 0,032 (synopsis_embeddings). Le classement des
+méthodes est identique ; les valeurs absolues ne se comparent pas d'un dataset à
+l'autre (catalogue et utilisateurs différents).
+
+Le filtrage collaboratif domine largement : les co-visionnages en disent bien plus
+que le texte sur ce qu'un utilisateur va aimer. Le contenu seul recommande des animés
+proches par le thème mais peu regardés ; il sert pour les animés sans interactions
+(voir cold-start ci-dessous).
+
+### Animés jamais regardés (cold-start)
+
+`synopsis_finetune` affine bge-base par apprentissage contrastif sur ~15 000 paires
+d'animés souvent regardés ensemble (hors franchise), puis évalue sur 751 animés mis
+de côté, jamais vus pendant l'entraînement. Tableau :
+[results/finetune/bge-base-en-v1.5.csv](results/finetune/bge-base-en-v1.5.csv).
+
+| Méthode | Voisins retrouvés (Recall@10) | nDCG@10 | HitRate@10 |
+| --- | --- | --- | --- |
+| Hasard | — | 0,016 | 0,118 |
+| bge-base | 0,076 | 0,042 | 0,239 |
+| **bge-base affiné** | **0,127** | **0,059** | **0,336** |
+| EASE (borne haute : a vu les interactions) | — | 0,604 | 0,950 |
+
+### Cartes
+
+[Carte des synopsis](results/embeddings/carte_bge-base-en-v1.5.html) et
+[carte collaborative](results/embeddings/carte_collaboratif.html) (UMAP, HTML
+autonome). Jaccard moyen des genres avec les 10 plus proches voisins : 0,36
+(synopsis) et 0,42 (co-visionnages), contre 0,15 entre animés pris au hasard.
 
 ## Organisation
 
 | Chemin | Contenu | Versionné |
 | --- | --- | --- |
 | `src/main.py` | Lanceur | oui |
-| `src/config.py` | Chemins, clés API (lues dans `.env`), graine | oui |
-| `src/methods/` | Une méthode par fichier (MinHash, popularité, Item-KNN, EASE...) | oui |
+| `src/config.py` | Chemins, clés API (lues dans `.env`), graine, filtre adulte | oui |
+| `src/methods/` | Une méthode par fichier | oui |
 | `src/preparation/` | Téléchargement et préparation des données | oui |
 | `src/common/` | Code partagé : MinHash, chargement des splits, évaluation | oui |
-| `scripts/check_env.py` | Vérification de l'environnement | oui |
-| `tests/` | Tests unitaires | oui |
-| `data/content/` | Catalogue de 4 985 animes et fichiers `.train` dérivés | oui |
-| `data/raw/` | Données téléchargées (Kaggle, API) | non |
-| `data/processed/` | Matrices utilisateurs x animes et splits d'évaluation | non |
-| `models/` | Modèles entraînés, embeddings | non |
-| `results/` | Paires MinHash, tableau comparatif des méthodes | oui |
-
-## Données d'interactions
-
-`prepare_interactions` lit `animelist.csv` (Kaggle *Anime Recommendation Database
-2020* : 109 M lignes, 325 770 utilisateurs) et ne garde que les animes de notre
-catalogue présents dans ces listes (4 017 sur 4 985 ; les plus récents sont absents).
-
-- **Positif** : statut en cours, terminé ou en pause, sauf note de 1 à 4.
-  « Abandonné » compte comme vu (jamais recommandé) mais pas comme positif ;
-  « prévu » est ignoré.
-- **Échantillon** : 100 000 utilisateurs ayant au moins 10 positifs ; animes
-  positifs chez au moins 5 utilisateurs d'entraînement, soit 3 814 animes.
-- **Splits** : 90 000 utilisateurs d'entraînement ; 5 000 de validation et 5 000
-  de test, absents de l'entraînement (comme un profil MAL saisi dans la démo).
-  Pour eux, 20 % des positifs sont masqués et doivent être retrouvés.
-- Options : `--num-users`, `--min-positives`, `--val-users`, `--holdout`, `--seed`...
-
-Premiers résultats (split `val`, paramètres par défaut, non réglés) :
-
-| Méthode | Recall@10 | nDCG@10 | HitRate@10 | Couverture@10 | Popularité moy.@10 |
-| --- | --- | --- | --- | --- | --- |
-| popularity | 0,238 | 0,262 | 0,776 | 2,1 % | 0,501 |
-| item_knn (k = 100, shrink = 10) | 0,455 | 0,491 | 0,942 | 36,5 % | 0,327 |
-| ease (λ = 500) | **0,688** | **0,724** | **0,979** | **57,5 %** | **0,229** |
-
-Recall@K est normalisé par min(K, nombre de cibles) ; les utilisateurs ont en
-moyenne environ 44 cibles, donc Recall@10 vaut ici la précision@10. La popularité
-moyenne est la part des utilisateurs d'entraînement ayant vu les animes recommandés
-(plus bas = recommandations moins évidentes).
-
-## MinHash sur les genres et tags
-
-```powershell
-python src/main.py prepare_content minhash_genres_tags
-```
-
-`prepare_content` crée notamment `data/content/anime_genres_tags.train` : trois
-champs séparés par des tabulations, sans en-tête (`id`, `genres`, `tags`).
-Ce fichier conserve les animes ayant au moins un genre ou tag, indépendamment
-de leur synopsis : 4 985 animes dans le dataset actuel.
-
-`minhash_genres_tags` compare uniquement ces métadonnées, en utilisant un label complet
-par shingle (`k = 1`). Ainsi, `Slice of Life` reste une seule catégorie, l'ordre
-des labels n'a pas d'effet et les doublons sont supprimés. La casse et les espaces
-sont normalisés ; les préfixes `genre:` et `tag:` distinguent les deux champs.
-Chaque label a le même poids. Les ensembles vides sont ignorés.
-
-Les signatures utilisent 128 fonctions de hachage avec une graine fixe (42).
-Le traitement des synopsis (`python src/main.py minhash_synopsis`) utilise les mêmes
-128 fonctions : les paramètres et coefficients sont partagés via `src/common/minhash.py`.
-Les synopsis conservent leurs shingles de trois mots.
-Sur 20 000 paires tirées au hasard avec la graine 123, l'erreur absolue moyenne
-par rapport au Jaccard exact est de 0,01376, contre 0,04096 avec 10 fonctions.
-Cette mesure concerne ce dataset et cet échantillon.
-
-Les paires dont le Jaccard **estimé est strictement supérieur à 0,5** sont écrites
-dans `results/minhash/prediction_genres_tags.csv`, avec le Jaccard exact pour vérification
-(colonnes `article1,article2,Est. J,Act. J`). Le seuil initial de 0,5 est configurable,
-de même que le nombre de fonctions et la graine :
-
-```powershell
-python src/main.py minhash_genres_tags --num-hashes 256 --threshold 0.3 --seed 42
-```
-
-## MinHash sur les genres, tags et synopsis combinés
-
-```powershell
-python src/main.py minhash_genres_tags_synopsis
-```
-
-Ce troisième traitement lit `data/content/anime_genres_tags_synopsis.train`, généré
-par `prepare_content` : quatre champs séparés par des tabulations, sans en-tête
-(`id`, `genres`, `tags`, `synopsis`). Il utilise les mêmes 4 974 animes que les
-synopsis seuls et les mêmes 128 fonctions de hachage (graine 42).
-
-Chaque anime est représenté par l'union des labels complets de genres et tags
-(`k = 1`) et des shingles de trois mots du synopsis (`k = 3`). Les préfixes
-`genre:`, `tag:` et `synopsis:` distinguent les champs. Aucun shingle ne traverse
-la frontière entre deux champs. Chaque shingle a le même poids : un synopsis
-long contribue davantage de shingles que les métadonnées ; ce calcul ne donne
-pas un poids égal aux trois champs.
-
-Les paires dont le Jaccard estimé est strictement supérieur à 0,1 sont exportées
-dans `results/minhash/prediction_genres_tags_synopsis.csv`, avec leur Jaccard exact calculé
-sur l'ensemble combiné. Les options `--input`, `--output`, `--num-hashes`,
-`--seed` et `--threshold` fonctionnent comme pour les genres/tags seuls.
-
-- ajouter des fonctions de hashage
-- normaliser les textes
-- essayer d'autres valeurs de k (shingles)
-
-Huit idées pour améliorer votre projet
-Voici les pistes que je privilégierais, en tenant compte de votre code actuel, des méthodes enseignées et de ce qui pourrait être intéressant pour votre projet final.
-Priorité	Idée	Méthodes du cours	Difficulté
-1	Améliorer et évaluer MinHash	Shingling, MinHash, Jaccard	Facile
-2	Ajouter TF-IDF et comparer les méthodes	Similarité cosinus	Facile
-3	Construire un recommandateur hybride	Similarité, clustering	Moyenne
-4	Accélérer la recherche avec LSH	Locality-Sensitive Hashing	Moyenne
-5	Détecter des communautés d'animes	Graphes, community detection	Moyenne
-6	Visualiser une carte des animes	Clustering, réduction de dimension	Moyenne
-7	Classer les animes par importance	PageRank, link analysis	Moyenne
-8	Étudier l'évolution des tendances	Streaming algorithms	Avancée
-
-Idée 1 — Améliorer votre MinHash actuel
-Commencez par les améliorations déjà évoquées dans votre README : normalisation des textes, fonctions de hashage et différentes tailles de shingles.
-
-Vous pourriez comparer les configurations suivantes :
-Exemples de configurations à tester
-Configuration	Shingles k	Hash functions
-Configuration actuelle	3	10
-Expérience A	2	100
-Expérience B	3	100
-Expérience C	3	200
-Expérience D	1	100
-
-Configurations expérimentales proposées, et non résultats déjà obtenus.
-Mesurez l'erreur moyenne entre les similarités estimées et réelles, ainsi que les temps de calcul. Augmenter le nombre de fonctions ne garantit pas une meilleure estimation pour chaque paire, mais réduit généralement la variance de l'estimateur.
-
-Attention à un problème dans les données : j'ai identifié 11 synopsis contenant moins de trois mots. Ils ne produisent aucun 3-shingle, ce qui donne des signatures MinHash artificiellement identiques avec votre implémentation actuelle. Il faudra filtrer ou traiter ces cas à part.
-Idée 2 — Comparer MinHash, TF-IDF et similarité cosinus
-C'est probablement l'amélioration offrant le meilleur rapport effort/résultat.
-
-Au lieu de mesurer uniquement des shingles identiques, TF-IDF représente chaque synopsis sous forme d'un vecteur pondérant les mots et expressions.
-
-J'ai testé rapidement cette approche sur vos 4 985 animes, avec des unigrammes et bigrammes.
-
-
-
-
-
-
-
-
-
-Exemple : Attack on Titan
-
-Résultats obtenus avec un premier modèle TF-IDF
-
-
-Anime rapproché	Cosinus
-Attack on Titan: Junior High	0,233
-Attack on Titan Season 2	0,220
-Attack on Titan Season 3 Part 2	0,211
-Attack on Titan: Final Season Part 2	0,209
-
-Résultats expérimentaux réels calculés sur le dataset fourni. Ils montrent une capacité à rapprocher les œuvres d'une même franchise, mais pas encore une recommandation optimale.
-Le fait que Junior High arrive avant la saison 2 illustre aussi une limite intéressante : des textes proches ne correspondent pas toujours au même type d'expérience pour le spectateur.
-
-Vous pourriez ensuite comparer TF-IDF, MinHash et, en extension, des embeddings de phrases avec Sentence Transformers.
-Idée 3 — Créer un système de recommandation hybride
-C'est l'application la plus naturelle de votre dataset, qui contient déjà les genres, tags, scores et studios.
-
-Vous pourriez calculer un score combinant plusieurs dimensions :
-\[
-S(A,B)=0.6S_{\text{text}}+0.25S_{\text{genres}}+0.15S_{\text{tags}}
-\]
-
-Les poids sont des hypothèses initiales à ajuster expérimentalement.
-
-Exemple : un utilisateur recherche des animes similaires à Death Note. Le système analyse non seulement son synopsis, mais aussi ses genres et tags, puis propose des animes apparentés tout en pouvant exclure les suites, remakes ou épisodes spéciaux.
-
-L'amélioration intéressante serait d'offrir deux modes : « Même univers / même franchise » et « Découvrir de nouveaux animes similaires ».
-Idée 4 — Ajouter LSH pour accélérer la recherche
-Votre programme compare actuellement toutes les paires, soit environ 12,4 millions de comparaisons.
-
-Le Locality-Sensitive Hashing permettrait de sélectionner des candidats probables sans toutes les comparer.
-
-Vous pourriez montrer le compromis entre la vitesse, la mémoire et le taux de paires pertinentes retrouvées. Cela correspond très directement à la Lecture 3.
-Idée 5 — Détecter des communautés d'animes
-
-
-
-
-
-
-
-
-
-Transformez vos données en graphe dans lequel chaque nœud représente un anime et chaque arête relie deux animes dont la similarité dépasse un seuil.
-
-Utilisez ensuite Louvain ou Girvan-Newman pour détecter des communautés.
-
-Vous pourriez découvrir des regroupements autour de la fantasy, du sport, de la romance ou de la science-fiction, puis examiner les communautés qui mélangent plusieurs genres.
-
-Cela correspond à la Lecture 6, Community Detection. Une communauté détectée n'est toutefois pas nécessairement un genre : il faudra interpréter les résultats grâce aux métadonnées.
-Idée 6 — Créer une carte interactive des animes
-Utilisez PCA ou UMAP sur les vecteurs TF-IDF pour projeter les animes en deux dimensions.
-
-Chaque point serait un anime, avec une couleur représentant son genre principal ou sa communauté.
-
-On pourrait alors sélectionner un anime et explorer les titres proches. C'est un excellent complément visuel au rapport final.
-Idée 7 — Utiliser PageRank pour améliorer les recommandations
-Sur votre graphe d'animes similaires, calculez PageRank pour identifier les titres centraux.
-
-Comparez ensuite cette centralité avec les notes, les favoris et le nombre de membres déjà présents dans le dataset.
-
-Une question de recherche possible serait : les animes les plus centraux dans un réseau de similarité sont-ils aussi les plus populaires ?
-
-Attention : PageRank mesure ici la centralité dans le graphe construit, pas directement la qualité d'un anime.
-Idée 8 — Analyser les tendances au fil du temps
-Votre dataset dispose de dates de sortie. Vous pouvez simuler l'arrivée progressive de nouveaux animes, année après année, et observer comment les genres dominants changent.
-
-Cela permettrait d'expérimenter les fenêtres glissantes et l'échantillonnage vus en Lecture 4, Mining Data Streams.
-
-Ce serait un flux historique simulé, et non une véritable collecte en temps réel.
-
-3. Le projet final que je vous recommanderais
-AnimeScope — Anime Similarity & Recommendation Explorer
-Recherche, recommandation et découverte de communautés d'animes à partir des techniques de Data Mining
-
-Je construirais le projet autour de quatre modules complémentaires :
-Dataset MyAnimeList — 4 985 animes
-Synopsis, genres, tags, studios, notes
-
-Moteur de similarité
-MinHash + LSH + TF-IDF
-
-Recommandateur hybride
-Texte + genres + tags
-
-Analyse de communautés
-Graphes + clustering
-
-Évaluation
-Qualité + vitesse + mémoire
-
-
-
-Interface interactive avec Streamlit
-Recherche d'animes, Top 5 recommandations, explications et carte des communautés
-
-4. Comment évaluer réellement le projet ?
-C'est un aspect que je vous encourage particulièrement à travailler. Une interface de recommandation ne suffit pas : vous devez pouvoir démontrer que vos méthodes apportent une amélioration.
-Question	Mesure proposée
-MinHash est-il précis ?	MAE entre Jaccard estimé et réel
-LSH accélère-t-il la recherche ?	Temps, mémoire, rappel des paires similaires
-Quel modèle recommande le mieux ?	Precision@5, nDCG@5
-Les recommandations sont-elles variées ?	Diversité des genres proposés
-Les communautés sont-elles cohérentes ?	Modularité et analyse des genres
-
-Pour évaluer la pertinence des recommandations, votre équipe pourrait annoter manuellement les cinq premières suggestions de 30 animes différents. Les genres ne suffisent pas, à eux seuls, à fournir une vérité terrain fiable.
-5. Répartition du travail entre trois étudiants
-La présentation du cours indique que le projet ouvert compte pour 25 % de la note finale et se réalise par groupes de trois. Je répartirais donc les responsabilités ainsi :
-Étudiant	Responsabilité principale	Livrables
-1	Amélioration de MinHash, implémentation LSH, benchmarking	Comparatifs précision/vitesse
-2	TF-IDF et recommandation hybride	Moteur Top 5 et métriques
-3	Graphes, community detection et interface	Visualisations et démonstration
-
-Les trois étudiants participeraient ensuite ensemble à l'évaluation des recommandations et au rapport.
-6. Ce que je ferais en premier
-Je commencerais par fiabiliser les données et le code : traiter les synopsis vides ou trop courts, corriger l'absence de shingles, vérifier la reproductibilité de prediction.csv et rendre les paramètres configurables.
-
-Ensuite, je construirais un véritable benchmark MinHash contre TF-IDF, avant de développer le recommandateur hybride.
-
-Mon choix serait de concentrer le projet sur les idées 1 à 5, avec la carte interactive comme fonctionnalité supplémentaire si vous avez suffisamment de temps. Vous pourriez ainsi couvrir trois chapitres importants du cours — similarité, analyse de liens et détection de communautés — sans transformer le projet en simple application web.
-
-Le résultat serait à la fois une démonstration concrète utilisable, un projet techniquement intéressant et une expérimentation rigoureuse, ce qui me semble particulièrement adapté à AI3602.
+| `scripts/` | `kaggle_run.py` (exécution sur Kaggle), `check_env.py` | oui |
+| `tests/` | Tests unitaires (MinHash, lanceur, métriques) | oui |
+| `docs/` | Plan, consignes, notes | oui |
+| `data/content/` | Catalogue et fichiers `.train` dérivés | oui |
+| `data/raw/`, `data/processed/` | Listes MAL téléchargées, matrices et splits | non |
+| `models/` | Embeddings et modèles | non |
+| `results/` | Paires MinHash, tableaux comparatifs, cartes, voisins | oui |

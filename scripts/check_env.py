@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 MODULES = [
     "numpy", "pandas", "pyarrow", "duckdb", "scipy", "tqdm", "kagglehub",
-    "requests", "dotenv", "sklearn", "implicit", "lightgbm",
+    "requests", "dotenv", "kaggle", "sklearn", "implicit", "lightgbm",
     "sentence_transformers", "torch", "networkx", "matplotlib", "umap",
     "streamlit",
 ]
