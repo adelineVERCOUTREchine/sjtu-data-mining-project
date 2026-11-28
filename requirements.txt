@@ -28,5 +28,5 @@ networkx>=3.3          # graphe d'animes, PageRank, communautés (Louvain)
 # --- Visualisation et démo ---
 matplotlib>=3.9
 umap-learn>=0.5        # carte 2D des animes
-streamlit>=1.39        # interface de démonstration
+streamlit>=1.67        # onglets interactifs de la démo
 altair>=5              # carte interactive EASE dans Streamlit

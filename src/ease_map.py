@@ -58,6 +58,7 @@ def donnees_carte(catalogue, groupes, coords, etiquettes, vus, recommandations):
 
 
 def graphique(points, afficher_fond):
+    fond = "#192433"
     domaine_x = [float(points.x.min()) - 1, float(points.x.max()) + 1]
     domaine_y = [float(points.y.min()) - 1, float(points.y.max()) + 1]
     if not afficher_fond:
@@ -67,8 +68,8 @@ def graphique(points, afficher_fond):
         y=alt.Y("y:Q", axis=None, scale=alt.Scale(domain=domaine_y)))
     statuts = ["Catalogue", "Watched", "Recommended"]
     couleur = alt.Color("status:N", title=None, scale=alt.Scale(
-        domain=statuts, range=["#178578", "#1247dc", "#bd3000"]),
-        legend=alt.Legend(orient="bottom", labelColor="#172033", symbolOpacity=1, symbolSize=110))
+        domain=statuts, range=["#46afa2", "#77b5ff", "#ffad69"]),
+        legend=alt.Legend(orient="bottom", labelColor="#d6e1eb", symbolOpacity=1, symbolSize=110))
     forme = alt.Shape("status:N", title=None, scale=alt.Scale(
         domain=statuts, range=["circle", "diamond", "circle"]), legend=None)
     info = [alt.Tooltip("title:N", title="Series"), alt.Tooltip("status:N", title="Status")]
@@ -78,11 +79,11 @@ def graphique(points, afficher_fond):
     for statut, taille, opacite in [("Catalogue", 21, 0.8), ("Watched", 145, 1), ("Recommended", 325, 1)]:
         details = info_rec if statut == "Recommended" else info
         couches.append(base.transform_filter(alt.datum.status == statut)
-                       .mark_point(filled=True, size=taille, opacity=opacite, stroke="white",
+                       .mark_point(filled=True, size=taille, opacity=opacite, stroke=fond,
                                    strokeWidth=0 if statut == "Catalogue" else 1.5)
                        .encode(color=couleur, shape=forme, tooltip=details))
     numeros = (base.transform_filter(alt.datum.status == "Recommended")
-               .mark_text(color="white", fontSize=12, fontWeight="bold")
+               .mark_text(color="#202431", fontSize=12, fontWeight="bold")
                .encode(text=alt.Text("rank:Q", format="d"), tooltip=info_rec))
-    return (alt.layer(*couches, numeros).properties(height=450, background="#ffffff")
-            .configure_view(stroke=None, fill="#ffffff").interactive())
+    return (alt.layer(*couches, numeros).properties(height=450, background=fond)
+            .configure_view(stroke=None, fill=fond).interactive())

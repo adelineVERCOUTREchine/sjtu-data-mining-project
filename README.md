@@ -31,7 +31,7 @@ Depuis la racine du projet, lancer la démo en anglais avec le modèle déjà ex
 python -m streamlit run src/demo.py --server.address 127.0.0.1
 ```
 
-En mode **Choose favourites**, choisir un à trois titres. Le classement des dix suggestions se recalcule à chaque
+Dans l’onglet **More Like My Favourites**, choisir un à trois titres. Le classement des dix suggestions se recalcule à chaque
 modification. Pour chaque suggestion, la dernière colonne indique le titre choisi
 dont le coefficient EASE contribue le plus au score. Les titres sélectionnés sont exclus.
 Le modèle local `models/ease_demo.npz` contient les poids,
@@ -77,20 +77,26 @@ La projection locale `results/embeddings/espace_ease.npz` est utilisée si sa
 signature correspond au modèle et au regroupement des saisons. Sinon la démo
 recalcule les positions et les garde en mémoire.
 
-En mode **MyAnimeList**, trois entrées permettent de charger le profil :
+Le bouton **Anime Advisor** ouvre un panneau conversationnel en anglais.
+Il utilise DeepSeek via ArcBench (`https://api.arc-bench.com/v1`, modèle
+`deepseek-flash`, `reasoning_effort=low`). Saisir la clé ArcBench dans le champ
+masqué du panneau, ou définir `ARCBENCH_API_KEY` dans `.env` puis redémarrer.
+Les cartes et les listes fonctionnent également sans le service de chat.
 
-- **Compte MAL** — Dans les paramètres de l'application sur MyAnimeList
-  (`https://myanimelist.net/apiconfig`), enregistrer exactement
-  `http://127.0.0.1:8501/` comme URL de redirection et renseigner
-  `MAL_CLIENT_ID` dans `.env`. Pour une autre adresse, faire correspondre
-  `MAL_REDIRECT_URI` à l'adresse enregistrée et utiliser ce même serveur Streamlit.
-  Si le client est confidentiel, renseigner aussi `MAL_CLIENT_SECRET`.
-  Cliquer sur **Connect my MyAnimeList account**, puis **Authorize on MyAnimeList**.
-  Autoriser sur MAL et revenir à l'onglet initial, qui charge automatiquement la liste.
+À chaque question, le conseiller interprète la demande, effectue une recherche
+locale dans tout le catalogue admissible et combine les résultats avec ceux des
+trois méthodes disponibles, indépendamment des cartes affichées. Une deuxième
+requête produit la réponse à partir des fiches retenues, des rangs, des mesures
+de validation et d'un résumé des préférences. Les requêtes transmettent à ArcBench
+la question et le contexte récent de la conversation. Les identifiants de compte
+et jetons MAL restent locaux. Changer de profil efface l'historique du panneau.
+
+Dans l’onglet **MyAnimeList Recommendations**, deux options permettent de charger le profil :
+
+- **Export du compte MAL** — Cliquer sur **Connect my MyAnimeList account** pour ouvrir la
+  page d'export MAL, choisir **Anime List**, puis importer le fichier `.xml.gz` ou `.xml` dans la démo.
 - **Liste publique** — Entrer le pseudo MAL et cliquer sur **Load public list**.
-  Cette option utilise le Client ID et fonctionne indépendamment de la redirection OAuth.
-- **Export hors ligne** — Depuis le lien d'export dans l'application, choisir
-  **Anime List** sur MAL et importer le fichier `.xml.gz` ou `.xml`.
+  Cette option utilise `MAL_CLIENT_ID` dans `.env`.
 
 Pour la démo, les notes des saisons terminées, en cours ou en pause donnent une
 moyenne par série. Le seuil personnel est la moyenne des séries notées représentées
